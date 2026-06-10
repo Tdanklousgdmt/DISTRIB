@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "distrib-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "/Users/tetedanklou/Documents/Claude/Projects/distrib", "run", "dev"],
+      "port": 3000
+    }
+  ]
+}

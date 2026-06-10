@@ -1,0 +1,448 @@
+// DISTRIB · Schéma BDD complet — Sprint 1
+//
+// Règle non-négo #1 : aucune colonne `deleted_at`. Les suppressions sont
+// interdites par design (API 403 + S3 Object Lock COMPLIANCE).
+//
+// Règle non-négo #4 : tout le schéma doit être pensé en Sprint 1. Une fois
+// le smart contract Polygon déployé, certaines migrations deviennent
+// douloureuses (alignement des IDs on-chain / off-chain).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  // URL définie dans prisma.config.ts (process.env.DATABASE_URL)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum ContributorRole {
+  ARTIST
+  CO_AUTHOR
+  BEATMAKER
+  CO_BEATMAKER
+}
+
+enum UserProfileFlag {
+  AUTEUR
+  INTERPRETE
+  PRODUCTEUR
+}
+
+enum VaultFileType {
+  WAV
+  FLP
+  ALS
+  PTX
+  STEM
+  LYRICS
+  OTHER
+}
+
+enum VersionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  OBSOLETE
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ConcertStatus {
+  SCHEDULED
+  DECLARED
+  PAID
+}
+
+enum SacemDeclarationType {
+  OEUVRE
+  LIVE
+}
+
+enum SacemDeclarationStatus {
+  PENDING_SIGNATURE
+  SIGNED
+  TRANSMITTED
+  PAID
+}
+
+enum ClaimStatus {
+  PENDING
+  AUTHORIZED
+  SPLIT_NEGOTIATED
+  DISPUTED
+  RESOLVED
+}
+
+enum ClaimResolutionAction {
+  AUTHORIZE
+  NEGOTIATE_SPLIT
+  REPORT
+}
+
+enum NotificationType {
+  CONTRIBUTOR_INVITED
+  APPROVAL_REQUESTED
+  VERSION_APPROVED
+  VERSION_REJECTED
+  CLAIM_DETECTED
+  CONCERT_REMINDER_J15
+  CONCERT_REMINDER_J5
+  CONCERT_REMINDER_J1
+  SACEM_SIGNED
+  PAYMENT_RECEIVED
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NEXTAUTH (Auth.js v5 — Prisma adapter)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  emailVerified DateTime?
+  name          String?
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Profil métier — un utilisateur peut cumuler les trois statuts
+  // (auteur + interprète + producteur). Voir doc section 07.
+  profileFlags UserProfileFlag[]
+
+  // NextAuth relations
+  accounts Account[]
+  sessions Session[]
+
+  // Business relations
+  ownedProjects   Project[]            @relation("ProjectOwner")
+  contributions   ProjectContributor[]
+  uploadedFiles   VaultFile[]          @relation("FileUploader")
+  createdVersions Version[]            @relation("VersionCreator")
+  givenApprovals  Approval[]
+  ownedConcerts   Concert[]
+  notifications   Notification[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PROJET — racine du vault
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Project {
+  id        String   @id @default(cuid())
+  title     String
+  isrc      String?  @unique
+  ownerId   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Smart contract Polygon — assigné au premier registerProject()
+  onchainProjectId String? @unique
+  registerTxHash   String?
+
+  // Reflet on-chain pour reads rapides — source de vérité = canPublish() du contrat
+  canPublish           Boolean @default(false)
+  publishBlockedReason String?
+
+  owner        User                 @relation("ProjectOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  contributors ProjectContributor[]
+  versions     Version[]
+  concerts     Concert[]
+  declarations SacemDeclaration[]
+
+  @@index([ownerId])
+}
+
+// Join table User <> Project avec rôle. Un user peut être ARTIST sur son
+// projet et BEATMAKER sur celui d'un autre — d'où le rôle ici, pas sur User.
+model ProjectContributor {
+  id         String          @id @default(cuid())
+  projectId  String
+  userId     String
+  role       ContributorRole
+  invitedAt  DateTime        @default(now())
+  acceptedAt DateTime?
+
+  project   Project    @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  user      User       @relation(fields: [userId], references: [id], onDelete: Restrict)
+  approvals Approval[]
+  splits    Split[]
+
+  @@unique([projectId, userId])
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VERSIONS & FICHIERS — vault collaboratif
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Une version = un dépôt avec description libre de contribution + N fichiers.
+// Le hash final on-chain est posé après approbation unanime (canPublish = true).
+model Version {
+  id              String        @id @default(cuid())
+  projectId       String
+  versionNumber   Int
+  description     String        @db.Text // description libre de la contribution — preuve de paternité
+  parentVersionId String?
+  createdById     String
+  createdAt       DateTime      @default(now())
+  status          VersionStatus @default(PENDING)
+  isCurrent       Boolean       @default(false)
+
+  // Hash on-chain au dépôt (preuve d'antériorité), puis tx finale après unanimité
+  initialPolygonTxHash String?
+  finalPolygonTxHash   String?
+  finalizedAt          DateTime?
+
+  project      Project            @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  createdBy    User               @relation("VersionCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  parent       Version?           @relation("VersionLineage", fields: [parentVersionId], references: [id], onDelete: Restrict)
+  children     Version[]          @relation("VersionLineage")
+  files        VaultFile[]
+  approvals    Approval[]
+  splits       Split[]
+  declarations SacemDeclaration[]
+
+  @@unique([projectId, versionNumber])
+  @@index([projectId, isCurrent])
+}
+
+// Un fichier déposé. JAMAIS supprimable. S3 Object Lock COMPLIANCE.
+model VaultFile {
+  id        String        @id @default(cuid())
+  versionId String
+  filename  String
+  fileType  VaultFileType
+  sizeBytes BigInt
+  mimeType  String?
+
+  // S3 — Object Lock COMPLIANCE garantit l'immuabilité côté stockage
+  s3Bucket              String
+  s3Key                 String
+  s3VersionId           String?
+  objectLockRetainUntil DateTime?
+
+  // Preuves cryptographiques
+  sha256Hash            String    @unique
+  polygonTxHash         String?
+  fingerprintComputedAt DateTime?
+
+  uploadedById String
+  uploadedAt   DateTime @default(now())
+
+  version          Version      @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  uploadedBy       User         @relation("FileUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+  fingerprint      Fingerprint?
+  claimsAsTarget   Claim[]      @relation("ClaimTargetFile")
+  claimsAsClaimant Claim[]      @relation("ClaimClaimantFile")
+
+  @@index([versionId])
+  @@index([sha256Hash])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// APPROBATIONS — flux multi-parties
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Approval {
+  id              String         @id @default(cuid())
+  versionId       String
+  contributorId   String // ProjectContributor.id
+  reviewerId      String // User.id (snapshot — au cas où le contributor change)
+  status          ApprovalStatus @default(PENDING)
+  comment         String?        @db.Text
+  decidedAt       DateTime?
+  signatureTxHash String? // signature wallet on-chain (~0,002 € par approve)
+  createdAt       DateTime       @default(now())
+
+  version     Version            @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  contributor ProjectContributor @relation(fields: [contributorId], references: [id], onDelete: Restrict)
+  reviewer    User               @relation(fields: [reviewerId], references: [id], onDelete: Restrict)
+
+  @@unique([versionId, contributorId])
+  @@index([reviewerId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SPLITS — répartition % par version (invalidés si modifiés)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Split {
+  id                 String    @id @default(cuid())
+  versionId          String
+  contributorId      String
+  percentage         Decimal   @db.Decimal(5, 2) // 0.00 → 100.00
+  roleLabel          String? // libre, ex: "Topline", "Mix"
+  signedAt           DateTime?
+  yousignSignatureId String?
+  createdAt          DateTime  @default(now())
+
+  version     Version            @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  contributor ProjectContributor @relation(fields: [contributorId], references: [id], onDelete: Restrict)
+  // NB : la contrainte "somme des % = 100" sera ajoutée via SQL brut dans
+  // une migration (CHECK constraint au niveau de la BDD) — Prisma ne la
+  // génère pas nativement.
+
+  @@unique([versionId, contributorId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CONCERTS & DÉCLARATIONS SACEM
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Concert {
+  id                String        @id @default(cuid())
+  projectId         String?
+  artistUserId      String
+  date              DateTime
+  venue             String
+  city              String?
+  country           String?
+  estimatedAudience Int?
+  actualAudience    Int?
+  setlist           Json?
+  status            ConcertStatus @default(SCHEDULED)
+  sacemReference    String?
+
+  // Rappels automatiques (J-15 / J-5 / J+1)
+  reminderJ15SentAt DateTime?
+  reminderJ5SentAt  DateTime?
+  reminderJ1SentAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project     Project?          @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  artist      User              @relation(fields: [artistUserId], references: [id], onDelete: Restrict)
+  declaration SacemDeclaration?
+
+  @@index([artistUserId, date])
+  @@index([date, status])
+}
+
+model SacemDeclaration {
+  id                  String                 @id @default(cuid())
+  projectId           String?
+  versionId           String?
+  concertId           String?                @unique
+  type                SacemDeclarationType
+  status              SacemDeclarationStatus @default(PENDING_SIGNATURE)
+  pdfS3Bucket         String?
+  pdfS3Key            String?
+  sacemReference      String?
+  submittedAt         DateTime?
+  paidAt              DateTime?
+  amountReceivedCents Int?
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+
+  project Project? @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  version Version? @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  concert Concert? @relation(fields: [concertId], references: [id], onDelete: Restrict)
+
+  @@index([type, status])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FINGERPRINT & CLAIMS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Fingerprint {
+  id          String   @id @default(cuid())
+  vaultFileId String   @unique
+  // Chromaprint encodé en bytea (binaire compact)
+  chromaprint Bytes
+  durationMs  Int
+  algorithm   String   @default("chromaprint-1.5")
+  computedAt  DateTime @default(now())
+
+  vaultFile VaultFile @relation(fields: [vaultFileId], references: [id], onDelete: Restrict)
+}
+
+// Une correspondance détectée entre 2 fichiers du vault.
+// Pour le monitoring externe (Spotify/Apple/YT...), un modèle ExternalMatch
+// distinct sera ajouté au Sprint 5.
+model Claim {
+  id                    String                 @id @default(cuid())
+  targetFileId          String // fichier original (le plus ancien)
+  claimantFileId        String // upload qui matche
+  similarityScore       Decimal                @db.Decimal(5, 4) // 0.0000 → 1.0000
+  status                ClaimStatus            @default(PENDING)
+  resolutionAction      ClaimResolutionAction?
+  onchainPendingClaimTx String?
+  resolutionTxHash      String?
+  resolvedAt            DateTime?
+  resolutionNote        String?                @db.Text
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  targetFile   VaultFile @relation("ClaimTargetFile", fields: [targetFileId], references: [id], onDelete: Restrict)
+  claimantFile VaultFile @relation("ClaimClaimantFile", fields: [claimantFileId], references: [id], onDelete: Restrict)
+
+  @@index([status])
+  @@index([targetFileId])
+  @@index([claimantFileId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NOTIFICATIONS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType
+  payload   Json
+  readAt    DateTime?
+  sentAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, readAt])
+  @@index([type, createdAt])
+}
