@@ -151,6 +151,37 @@ export async function approveVersionOnchain(params: {
 }
 
 /**
+ * Pose une réclamation on-chain : bloque la publication du projet visé
+ * jusqu'à résolution. Renvoie le hash de tx, ou null.
+ */
+export async function setPendingClaimOnchain(projectId: string): Promise<string | null> {
+  const chain = getChain();
+  if (!chain) return null;
+  try {
+    const tx = await chain.registry.setPendingClaim(onchainId(projectId));
+    await tx.wait();
+    return tx.hash;
+  } catch (e) {
+    console.error("[blockchain] setPendingClaim échoué (sera rejoué) :", e);
+    return null;
+  }
+}
+
+/** Résout la réclamation on-chain : débloque la publication. */
+export async function resolveClaimOnchain(projectId: string): Promise<string | null> {
+  const chain = getChain();
+  if (!chain) return null;
+  try {
+    const tx = await chain.registry.resolveClaim(onchainId(projectId));
+    await tx.wait();
+    return tx.hash;
+  } catch (e) {
+    console.error("[blockchain] resolveClaim échoué (sera rejoué) :", e);
+    return null;
+  }
+}
+
+/**
  * Aligne Project.canPublish sur l'état du contrat (source de vérité on-chain).
  * No-op tant que la stack n'est pas provisionnée.
  */

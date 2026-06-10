@@ -1,10 +1,11 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 
 import { prisma } from "@/lib/prisma";
 import { getUser } from "@/lib/session";
 import { sha256 } from "@/lib/hash";
 import { putVaultObject, vaultKey, s3Configured } from "@/lib/s3";
 import { anchorFileHash } from "@/lib/blockchain";
+import { processUploadedAudio } from "@/lib/fingerprint";
 import { uploadMetadataSchema, fileTypeFromName } from "@/lib/validators";
 
 // Limite défensive : 500 Mo / fichier (stems, projets DAW). Au-delà → 413.
@@ -114,6 +115,10 @@ export async function POST(request: Request) {
       uploadedById: user.id,
     },
   });
+
+  // Sprint 5 : empreinte acoustique + détection de similarité, APRÈS la
+  // réponse HTTP (l'artiste n'attend pas ; no-op si fpcalc absent).
+  after(() => processUploadedAudio(created.id, buffer));
 
   return NextResponse.json({ file: serializeFile(created) }, { status: 201 });
 }

@@ -274,14 +274,38 @@ model VaultFile {
   uploadedById String
   uploadedAt   DateTime @default(now())
 
-  version          Version      @relation(fields: [versionId], references: [id], onDelete: Restrict)
-  uploadedBy       User         @relation("FileUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+  version          Version         @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  uploadedBy       User            @relation("FileUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
   fingerprint      Fingerprint?
-  claimsAsTarget   Claim[]      @relation("ClaimTargetFile")
-  claimsAsClaimant Claim[]      @relation("ClaimClaimantFile")
+  claimsAsTarget   Claim[]         @relation("ClaimTargetFile")
+  claimsAsClaimant Claim[]         @relation("ClaimClaimantFile")
+  externalMatches  ExternalMatch[]
 
   @@index([versionId])
   @@index([sha256Hash])
+}
+
+// Correspondance détectée sur une plateforme EXTERNE (Spotify, Apple Music,
+// YouTube, Deezer, SoundCloud…) via AudD — monitoring Sprint 5.
+model ExternalMatch {
+  id          String    @id @default(cuid())
+  vaultFileId String
+  platform    String // spotify | apple_music | youtube | deezer | soundcloud | unknown
+  title       String?
+  artist      String?
+  album       String?
+  externalUrl String?
+  isrc        String?
+  score       Decimal?  @db.Decimal(5, 4)
+  raw         Json // réponse AudD brute — audit
+  detectedAt  DateTime  @default(now())
+  reviewedAt  DateTime?
+
+  vaultFile VaultFile @relation(fields: [vaultFileId], references: [id], onDelete: Restrict)
+
+  @@unique([vaultFileId, platform, externalUrl])
+  @@index([vaultFileId])
+  @@index([detectedAt])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
