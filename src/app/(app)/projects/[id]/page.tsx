@@ -8,6 +8,7 @@ import { UploadForm } from "./UploadForm";
 import { InviteContributorForm } from "./InviteContributorForm";
 import { ApprovalDecision } from "./ApprovalDecision";
 import { SplitsEditor } from "./SplitsEditor";
+import { DeclareOeuvreButton } from "./DeclareOeuvreButton";
 
 function formatBytes(bytes: bigint): string {
   const units = ["o", "Ko", "Mo", "Go"];
@@ -62,6 +63,7 @@ export default async function ProjectDetailPage({
             include: { reviewer: { select: { email: true, name: true } } },
           },
           splits: true,
+          declarations: { where: { type: "OEUVRE" }, select: { id: true } },
         },
       },
     },
@@ -219,6 +221,22 @@ export default async function ProjectDetailPage({
                         </ul>
                         {myPendingApproval && v.status === "PENDING" && (
                           <ApprovalDecision approvalId={myPendingApproval.id} />
+                        )}
+                      </div>
+                    )}
+
+                    {/* Déclaration SACEM (version approuvée avec splits) */}
+                    {v.status === "APPROVED" && v.splits.length > 0 && (
+                      <div className="mt-3 border-t border-black/10 pt-3 dark:border-white/10">
+                        {v.declarations.length > 0 ? (
+                          <a
+                            href={`/api/declarations/${v.declarations[0].id}/pdf`}
+                            className="text-xs underline"
+                          >
+                            Œuvre déclarée — bulletin PDF
+                          </a>
+                        ) : (
+                          <DeclareOeuvreButton versionId={v.id} />
                         )}
                       </div>
                     )}

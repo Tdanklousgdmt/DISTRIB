@@ -38,3 +38,13 @@ export function s3Configured(): boolean {
 export function resendConfigured(): boolean {
   return hasEnv("RESEND_API_KEY", "EMAIL_FROM");
 }
+
+/** Config signatures eIDAS Yousign (Sprint 4). */
+export function yousignConfigured(): boolean {
+  return hasEnv("YOUSIGN_API_KEY");
+}
+
+/** Config reconnaissance audio AudD (Sprint 5). */
+export function auddConfigured(): boolean {
+  return hasEnv("AUDD_API_TOKEN");
+}

@@ -79,6 +79,40 @@ export const setSplitsSchema = z
   );
 export type SetSplitsInput = z.infer<typeof setSplitsSchema>;
 
+// Concerts (Sprint 4). La setlist arrive en textarea : un titre par ligne.
+export const createConcertSchema = z.object({
+  date: z.coerce.date().refine((d) => !Number.isNaN(d.getTime()), "Date invalide"),
+  venue: z.string().trim().min(1, "Lieu requis").max(200),
+  city: z.string().trim().max(120).optional().or(z.literal("").transform(() => undefined)),
+  country: z.string().trim().max(120).optional().or(z.literal("").transform(() => undefined)),
+  estimatedAudience: z.coerce.number().int().positive().max(1_000_000).optional(),
+  setlist: z
+    .string()
+    .transform((raw) =>
+      raw
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .slice(0, 50),
+    )
+    .pipe(z.array(z.string().max(200))),
+  projectId: z.string().min(1).optional().or(z.literal("").transform(() => undefined)),
+});
+export type CreateConcertInput = z.infer<typeof createConcertSchema>;
+
+export const markDeclarationPaidSchema = z.object({
+  declarationId: z.string().min(1),
+  amountEuros: z.coerce.number().positive("Montant requis").max(10_000_000),
+});
+
+// Résolution d'une réclamation (Sprint 5) — cohérent avec ClaimResolutionAction.
+export const resolveClaimSchema = z.object({
+  claimId: z.string().min(1),
+  action: z.enum(["AUTHORIZE", "NEGOTIATE_SPLIT", "REPORT"]),
+  note: z.string().trim().max(5000).optional(),
+});
+export type ResolveClaimInput = z.infer<typeof resolveClaimSchema>;
+
 // Types de fichiers acceptés au vault. Cohérent avec l'enum Prisma VaultFileType.
 export const vaultFileTypes = [
   "WAV",

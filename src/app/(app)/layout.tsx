@@ -30,6 +30,15 @@ export default async function AppLayout({
             <Link href="/projects" className="hover:underline">
               Mes projets
             </Link>
+            <Link href="/concerts" className="hover:underline">
+              Concerts
+            </Link>
+            <Link href="/revenus" className="hover:underline">
+              Revenus
+            </Link>
+            <Link href="/claims" className="hover:underline">
+              Réclamations
+            </Link>
             <Link href="/notifications" className="relative hover:underline">
               Notifications
               {unreadCount > 0 && (
