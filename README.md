@@ -37,8 +37,8 @@ et reconnaissance audio — du concept au code.
 | 1      | M1–M2    | 8 sem   | App · auth · upload S3 · schéma BDD — ✅ _codé (provisioning à faire)_ |
 | 2      | M2–M3    | 6 sem   | Vault collaboratif · approbations · splits — ✅ _codé (Yousign S4)_    |
 | 3      | M4–M6    | 10 sem  | Smart contract + tests — ✅ _codé (19 tests) · déploiement Amoy à faire_ |
-| 4      | M6–M7    | 6 sem   | SACEM œuvres + live · calendrier · dashboard revenus unifié           |
-| 5      | M7–M8    | 6 sem   | Fingerprint Chromaprint · scan AudD · interface claims                |
+| 4      | M6–M7    | 6 sem   | SACEM œuvres + live · concerts · revenus — ✅ _codé (Yousign gated)_   |
+| 5      | M7–M8    | 6 sem   | Fingerprint · scan AudD · claims — ✅ _codé (fpcalc/AudD gated)_       |
 
 ## Setup local
 
@@ -109,6 +109,35 @@ distrib/
   les migrations Prisma ne tolèrent pas pgbouncer.
 - **S3 Object Lock** : ne peut être activé qu'à la **création** du bucket.
   Si tu provisionnes le bucket plus tard, vérifie ce point avant tout upload.
+
+## Mise en production (Railway)
+
+Le repo contient `railway.json` : build Nixpacks, `prisma migrate deploy` au
+boot, healthcheck sur `/api/health` (qui liste aussi les services configurés).
+
+### Checklist de provisioning — dans l'ordre
+
+1. **Supabase** (déjà créé) : Dashboard → Settings → Database → copier les deux
+   URLs (pooler 6543 → `DATABASE_URL`, session 5432 → `DIRECT_URL`).
+   Puis en local : `npx prisma migrate deploy`.
+2. **Resend** : créer une API key + vérifier un domaine d'envoi →
+   `RESEND_API_KEY`, `EMAIL_FROM`. (Sans ça : pas de magic link → pas de login.)
+3. **AWS S3** : créer le bucket **avec Object Lock activé à la création**
+   (irréversible), mode par défaut COMPLIANCE → `AWS_*`, `S3_BUCKET_VAULT`.
+4. **Railway** : nouveau projet depuis le repo GitHub, coller toutes les
+   variables d'env (+ `AUTH_SECRET`, `AUTH_URL=https://<domaine>`,
+   `CRON_SECRET`). Configurer 2 crons quotidiens qui appellent
+   `/api/cron/reminders` et `/api/cron/scan` avec
+   `Authorization: Bearer $CRON_SECRET`.
+5. **Alchemy + wallet serveur** (Sprint 3 on-chain) : créer l'app Amoy →
+   `ALCHEMY_RPC_URL_AMOY`, générer un wallet dédié → `SERVER_WALLET_PRIVATE_KEY`,
+   le financer en POL testnet (faucet), puis :
+   `cd contracts && npx hardhat ignition deploy ignition/modules/DistribRegistry.ts --network amoy`
+   → reporter l'adresse dans `MASTER_CONTRACT_ADDRESS`.
+   **⚠️ 2 semaines minimum sur Amoy avant tout passage mainnet (non-négo #3).**
+6. **Optionnel** : `YOUSIGN_API_KEY` (signatures eIDAS), `AUDD_API_TOKEN`
+   (scan DSP), `fpcalc` (Chromaprint) dans l'image de déploiement —
+   chaque service absent dégrade proprement (flux manuel ou no-op).
 
 ## Confidentialité
 

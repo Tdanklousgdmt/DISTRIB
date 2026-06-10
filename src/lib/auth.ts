@@ -15,6 +15,8 @@ import { optionalEnv } from "@/lib/env";
 
 export const authConfig = {
   adapter: PrismaAdapter(prisma),
+  // Derrière le proxy Railway, l'hôte est transmis via X-Forwarded-Host.
+  trustHost: true,
   // Sessions en base (et non JWT) : on s'appuie sur le Prisma adapter et les
   // tables Session / VerificationToken déjà présentes dans le schéma.
   session: { strategy: "database" },
