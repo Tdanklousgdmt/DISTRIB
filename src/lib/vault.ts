@@ -9,6 +9,11 @@ import type { NotificationType } from "@/generated/prisma/enums";
 //   dépôt → 1 Approval par contributeur (créateur auto-approuvé)
 //         → unanimité APPROVED  ⇒ version APPROVED + isCurrent + ancrage on-chain
 //         → 1 seul REJECTED     ⇒ version REJECTED
+//
+// Cas solo (1 seul contributeur) : le créateur est auto-approuvé mais la
+// version reste PENDING tant qu'aucun fichier n'a été déposé — sinon la
+// finalisation on-chain aurait lieu avant toute preuve. C'est l'action
+// explicite finalizeSoloVersion (déclenchée après upload) qui ancre.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function createNotification(params: {
@@ -24,7 +29,8 @@ export async function createNotification(params: {
 /**
  * Crée les demandes d'approbation d'une version fraîchement déposée.
  * Le créateur est auto-approuvé ; les autres contributeurs sont notifiés.
- * Cas solo (1 seul contributeur) : la version est finalisée immédiatement.
+ * Cas solo : PAS de finalisation ici — voir finalizeSoloVersion, déclenchée
+ * après upload pour garantir qu'au moins un fichier existe avant l'ancrage.
  */
 export async function requestApprovals(versionId: string) {
   const version = await prisma.version.findUniqueOrThrow({
@@ -62,10 +68,26 @@ export async function requestApprovals(versionId: string) {
     });
   }
 
-  // Solo : unanimité triviale → finalisation immédiate.
-  if (others.length === 0) {
-    await finalizeApprovedVersion(versionId);
-  }
+  // Pas de finalisation ici, y compris en solo : voir finalizeSoloVersion.
+}
+
+/**
+ * Finalise une version solo (créateur = seul contributeur, déjà auto-approuvé)
+ * dès qu'au moins un fichier a été déposé. Appelée après chaque upload — no-op
+ * si la version n'est pas éligible (déjà finalisée, contributeurs multiples
+ * avec approbations en attente, ou aucun fichier).
+ */
+export async function finalizeSoloVersionIfReady(versionId: string) {
+  const version = await prisma.version.findUnique({
+    where: { id: versionId },
+    include: { approvals: true, files: { select: { id: true }, take: 1 } },
+  });
+  if (!version || version.status !== "PENDING") return;
+  if (version.files.length === 0) return;
+  const stillPending = version.approvals.some((a) => a.status === "PENDING");
+  if (stillPending) return;
+
+  await finalizeApprovedVersion(versionId);
 }
 
 /**

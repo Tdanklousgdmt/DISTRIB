@@ -5,6 +5,7 @@ import { getUser } from "@/lib/session";
 import { sha256 } from "@/lib/hash";
 import { storeVaultObject, vaultKey, storageConfigured } from "@/lib/storage";
 import { anchorFileHash } from "@/lib/blockchain";
+import { finalizeSoloVersionIfReady } from "@/lib/vault";
 import { processUploadedAudio } from "@/lib/fingerprint";
 import { uploadMetadataSchema, fileTypeFromName } from "@/lib/validators";
 
@@ -115,6 +116,10 @@ export async function POST(request: Request) {
       uploadedById: user.id,
     },
   });
+
+  // Cas solo : ce dépôt peut suffire à finaliser la version (créateur déjà
+  // auto-approuvé) — voir finalizeSoloVersionIfReady, no-op sinon.
+  await finalizeSoloVersionIfReady(versionId);
 
   // Sprint 5 : empreinte acoustique + détection de similarité, APRÈS la
   // réponse HTTP (l'artiste n'attend pas ; no-op si fpcalc absent).
