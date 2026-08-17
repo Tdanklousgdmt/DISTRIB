@@ -42,3 +42,6 @@ yarn-error.log*
 next-env.d.ts
 
 /src/generated/prisma
+
+# Vault local (driver de stockage local — jamais versionné)
+.vault/

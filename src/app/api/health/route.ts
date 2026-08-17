@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/prisma";
-import { auddConfigured, resendConfigured, s3Configured, yousignConfigured } from "@/lib/env";
+import { auddConfigured, resendConfigured, yousignConfigured } from "@/lib/env";
+import { storageConfigured, storageDriver } from "@/lib/storage";
 import { blockchainEnabled } from "@/lib/blockchain";
 
 // GET /api/health — utilisé par le healthcheck Railway et pour diagnostiquer
@@ -19,7 +20,7 @@ export async function GET() {
     ok: database,
     services: {
       database,
-      s3: s3Configured(),
+      storage: storageConfigured() ? storageDriver() : false,
       resend: resendConfigured(),
       blockchain: blockchainEnabled(),
       yousign: yousignConfigured(),

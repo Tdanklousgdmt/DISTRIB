@@ -3,7 +3,7 @@ import { NextResponse, after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getUser } from "@/lib/session";
 import { sha256 } from "@/lib/hash";
-import { putVaultObject, vaultKey, s3Configured } from "@/lib/s3";
+import { storeVaultObject, vaultKey, storageConfigured } from "@/lib/storage";
 import { anchorFileHash } from "@/lib/blockchain";
 import { processUploadedAudio } from "@/lib/fingerprint";
 import { uploadMetadataSchema, fileTypeFromName } from "@/lib/validators";
@@ -24,9 +24,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Non authentifié." }, { status: 401 });
   }
 
-  if (!s3Configured()) {
+  if (!storageConfigured()) {
     return NextResponse.json(
-      { error: "Stockage non configuré. Provisionnez le bucket S3 (Object Lock)." },
+      { error: "Stockage non configuré (S3 ou driver local)." },
       { status: 503 },
     );
   }
@@ -89,7 +89,7 @@ export async function POST(request: Request) {
     filename: file.name,
   });
 
-  const stored = await putVaultObject({
+  const stored = await storeVaultObject({
     key,
     body: buffer,
     contentType: file.type || undefined,
