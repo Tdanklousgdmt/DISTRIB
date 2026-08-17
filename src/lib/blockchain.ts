@@ -181,6 +181,64 @@ export async function resolveClaimOnchain(projectId: string): Promise<string | n
   }
 }
 
+export interface OnchainTxInfo {
+  hash: string;
+  status: "success" | "failed" | "pending";
+  blockNumber: number | null;
+  timestamp: Date | null;
+  from: string | null;
+  to: string | null;
+  valuePol: string;
+  feePol: string | null;
+  network: "amoy" | "mainnet";
+  explorerUrl: string;
+}
+
+function explorerBaseUrl(): string {
+  return (optionalEnv("POLYGON_NETWORK") ?? "amoy") === "mainnet"
+    ? "https://polygonscan.com"
+    : "https://amoy.polygonscan.com";
+}
+
+/**
+ * Interroge Polygon pour les détails vérifiables d'une transaction (registre
+ * des preuves — voir buildLedgerPdf). Lecture seule : n'a besoin ni du wallet
+ * ni du contrat, juste du RPC. Renvoie null si la stack n'est pas configurée
+ * ou si la transaction est introuvable.
+ */
+export async function getOnchainTxInfo(txHash: string): Promise<OnchainTxInfo | null> {
+  const url = rpcUrl();
+  if (!url) return null;
+  const network = (optionalEnv("POLYGON_NETWORK") ?? "amoy") as "amoy" | "mainnet";
+  try {
+    const provider = new JsonRpcProvider(url);
+    const [receipt, tx] = await Promise.all([
+      provider.getTransactionReceipt(txHash),
+      provider.getTransaction(txHash),
+    ]);
+    if (!receipt || !tx) return null;
+
+    const block = receipt.blockNumber != null ? await provider.getBlock(receipt.blockNumber) : null;
+    const feeWei = receipt.gasUsed * receipt.gasPrice;
+
+    return {
+      hash: txHash,
+      status: receipt.status === 1 ? "success" : "failed",
+      blockNumber: receipt.blockNumber,
+      timestamp: block ? new Date(Number(block.timestamp) * 1000) : null,
+      from: receipt.from,
+      to: receipt.to,
+      valuePol: (Number(tx.value) / 1e18).toString(),
+      feePol: (Number(feeWei) / 1e18).toFixed(6),
+      network,
+      explorerUrl: `${explorerBaseUrl()}/tx/${txHash}`,
+    };
+  } catch (e) {
+    console.error("[blockchain] getOnchainTxInfo échoué pour", txHash, ":", e);
+    return null;
+  }
+}
+
 /**
  * Aligne Project.canPublish sur l'état du contrat (source de vérité on-chain).
  * No-op tant que la stack n'est pas provisionnée.

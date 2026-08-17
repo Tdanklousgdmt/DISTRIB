@@ -15,6 +15,7 @@ import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf
 // ─────────────────────────────────────────────────────────────────────────────
 
 const A4: [number, number] = [595.28, 841.89];
+const A4_LANDSCAPE: [number, number] = [841.89, 595.28];
 const MARGIN = 50;
 
 interface Cursor {
@@ -131,6 +132,222 @@ export async function buildOeuvrePdf(data: OeuvreDeclarationData): Promise<Uint8
   drawField(c, bold, regular, "Signature de l'ayant droit", " ");
 
   drawFooter(page, regular, data.generatedAt);
+  return doc.save();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Registre des transactions blockchain (attestation par projet) — Hash,
+// Méthode, Bloc, Date, Wallets, Montant, Frais. Format paysage : 8 colonnes.
+// Document destiné à un tiers (label, juriste) qui vérifie indépendamment sur
+// PolygonScan — chaque ligne renvoie explicitement vers l'explorateur public.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface LedgerPdfRow {
+  label: string;
+  method: string;
+  hash: string;
+  status: "success" | "failed" | "pending" | "introuvable";
+  blockNumber: number | null;
+  date: Date | null;
+  from: string | null;
+  to: string | null;
+  valuePol: string;
+  feePol: string | null;
+  explorerUrl: string | null;
+}
+
+export interface LedgerPdfData {
+  projectTitle: string;
+  contractAddress: string | null;
+  network: "amoy" | "mainnet";
+  rows: LedgerPdfRow[];
+  generatedAt: Date;
+}
+
+const LEDGER_COLS = [
+  { key: "hash", label: "Transaction Hash", width: 95 },
+  { key: "method", label: "Method", width: 130 },
+  { key: "block", label: "Block", width: 55 },
+  { key: "date", label: "Date", width: 90 },
+  { key: "from", label: "From", width: 85 },
+  { key: "to", label: "To", width: 85 },
+  { key: "amount", label: "Amount", width: 55 },
+  { key: "fee", label: "Txn Fee", width: 70 },
+] as const;
+
+function truncateToWidth(font: PDFFont, text: string, size: number, maxWidth: number): string {
+  if (font.widthOfTextAtSize(text, size) <= maxWidth) return text;
+  let t = text;
+  while (t.length > 1 && font.widthOfTextAtSize(t + "…", size) > maxWidth) {
+    t = t.slice(0, -1);
+  }
+  return t + "…";
+}
+
+function truncateAddress(addr: string | null): string {
+  if (!addr) return "—";
+  return `${addr.slice(0, 8)}…${addr.slice(-6)}`;
+}
+
+function truncateHash(hash: string): string {
+  return `${hash.slice(0, 10)}…${hash.slice(-6)}`;
+}
+
+function newLedgerPage(doc: PDFDocument): PDFPage {
+  return doc.addPage(A4_LANDSCAPE);
+}
+
+function drawLedgerColumnHeaders(c: Cursor, bold: PDFFont) {
+  let x = MARGIN;
+  for (const col of LEDGER_COLS) {
+    c.page.drawText(col.label, { x, y: c.y, size: 8, font: bold, color: rgb(0.35, 0.35, 0.4) });
+    x += col.width;
+  }
+  c.y -= 5;
+  c.page.drawLine({
+    start: { x: MARGIN, y: c.y },
+    end: { x: A4_LANDSCAPE[0] - MARGIN, y: c.y },
+    thickness: 0.5,
+    color: rgb(0.8, 0.8, 0.82),
+  });
+  c.y -= 14;
+}
+
+const statusLabels: Record<LedgerPdfRow["status"], string> = {
+  success: "Succès",
+  failed: "Échec",
+  pending: "En attente",
+  introuvable: "Introuvable",
+};
+
+/**
+ * Registre des transactions blockchain d'un projet — attestation destinée à
+ * un tiers (label, juriste) : chaque ligne d'ancrage ou d'approbation, avec
+ * hash, méthode, bloc, date, wallets et frais, vérifiable indépendamment sur
+ * PolygonScan (lien fourni pour chaque ligne).
+ */
+export async function buildLedgerPdf(data: LedgerPdfData): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const regular = await doc.embedFont(StandardFonts.Helvetica);
+  const mono = await doc.embedFont(StandardFonts.Courier);
+
+  let page = newLedgerPage(doc);
+  const c: Cursor = { page, y: A4_LANDSCAPE[1] - 60 };
+
+  const drawHeaderBlock = () => {
+    c.page.drawText(`Registre des transactions blockchain — ${data.projectTitle}`, {
+      x: MARGIN,
+      y: c.y,
+      size: 16,
+      font: bold,
+      color: rgb(0.1, 0.1, 0.12),
+    });
+    c.y -= 20;
+    c.page.drawText(
+      `Réseau Polygon ${data.network === "mainnet" ? "mainnet" : "Amoy (testnet)"} · Contrat DistribRegistry ${
+        data.contractAddress ?? "non déployé"
+      }`,
+      { x: MARGIN, y: c.y, size: 9, font: regular, color: rgb(0.4, 0.4, 0.45) },
+    );
+    c.y -= 24;
+  };
+
+  drawHeaderBlock();
+  drawLedgerColumnHeaders(c, bold);
+
+  const rowHeight = 26;
+  const explorerLinks: Array<{ n: number; label: string; url: string }> = [];
+
+  data.rows.forEach((row, i) => {
+    if (c.y < MARGIN + rowHeight) {
+      page = newLedgerPage(doc);
+      c.page = page;
+      c.y = A4_LANDSCAPE[1] - 60;
+      drawLedgerColumnHeaders(c, bold);
+    }
+
+    let x = MARGIN;
+    const cells: Array<{ text: string; font: PDFFont; color?: ReturnType<typeof rgb> }> = [
+      { text: truncateHash(row.hash), font: mono },
+      { text: truncateToWidth(regular, row.method, 8.5, 122), font: regular },
+      { text: row.blockNumber != null ? String(row.blockNumber) : "—", font: regular },
+      {
+        text: row.date
+          ? row.date.toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })
+          : "—",
+        font: regular,
+      },
+      { text: truncateAddress(row.from), font: mono },
+      { text: truncateAddress(row.to), font: mono },
+      { text: `${row.valuePol} POL`, font: regular },
+      { text: row.feePol ? `${row.feePol} POL` : "—", font: regular },
+    ];
+
+    for (let ci = 0; ci < LEDGER_COLS.length; ci++) {
+      c.page.drawText(cells[ci].text, {
+        x,
+        y: c.y,
+        size: 8.5,
+        font: cells[ci].font,
+        color: rgb(0.15, 0.15, 0.18),
+      });
+      x += LEDGER_COLS[ci].width;
+    }
+    c.y -= 11;
+    c.page.drawText(
+      `${row.label} · statut : ${statusLabels[row.status]}`,
+      { x: MARGIN, y: c.y, size: 7, font: regular, color: rgb(0.5, 0.5, 0.55) },
+    );
+    c.y -= rowHeight - 11;
+
+    if (row.explorerUrl) {
+      explorerLinks.push({ n: i + 1, label: row.label, url: row.explorerUrl });
+    }
+  });
+
+  // Page de vérification : liste des liens PolygonScan, un par transaction —
+  // c'est ici qu'un tiers (label, avocat) va confirmer chaque preuve lui-même.
+  if (explorerLinks.length > 0) {
+    page = newLedgerPage(doc);
+    c.page = page;
+    c.y = A4_LANDSCAPE[1] - 60;
+    c.page.drawText("Vérification indépendante", {
+      x: MARGIN,
+      y: c.y,
+      size: 14,
+      font: bold,
+      color: rgb(0.1, 0.1, 0.12),
+    });
+    c.y -= 18;
+    c.page.drawText(
+      "Chaque transaction ci-dessous est publique et vérifiable par n'importe qui, sans dépendre de DISTRIB — ouvrez le lien dans un navigateur.",
+      { x: MARGIN, y: c.y, size: 9, font: regular, color: rgb(0.4, 0.4, 0.45) },
+    );
+    c.y -= 26;
+
+    for (const link of explorerLinks) {
+      if (c.y < MARGIN + 30) {
+        page = newLedgerPage(doc);
+        c.page = page;
+        c.y = A4_LANDSCAPE[1] - 60;
+      }
+      c.page.drawText(`${link.label}`, { x: MARGIN, y: c.y, size: 9, font: bold });
+      c.y -= 13;
+      c.page.drawText(link.url, {
+        x: MARGIN,
+        y: c.y,
+        size: 8.5,
+        font: mono,
+        color: rgb(0.2, 0.3, 0.7),
+      });
+      c.y -= 20;
+    }
+  }
+
+  for (const p of doc.getPages()) {
+    drawFooter(p, regular, data.generatedAt);
+  }
   return doc.save();
 }
 

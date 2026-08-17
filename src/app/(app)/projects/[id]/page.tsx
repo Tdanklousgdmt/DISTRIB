@@ -71,6 +71,10 @@ export default async function ProjectDetailPage({
 
   if (!project) notFound();
 
+  const hasOnchainTx = project.versions.some(
+    (v) => v.finalPolygonTxHash || v.files.some((f) => f.polygonTxHash),
+  );
+
   const isOwner = project.ownerId === user.id;
   const authorized =
     isOwner || project.contributors.some((c) => c.userId === user.id);
@@ -101,6 +105,14 @@ export default async function ProjectDetailPage({
           >
             {project.canPublish ? "Publiable" : "En cours"}
           </span>
+          {hasOnchainTx && (
+            <a
+              href={`/api/projects/${project.id}/ledger/pdf`}
+              className="ml-auto rounded-full border border-black/15 px-3 py-1 text-xs font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
+            >
+              Registre blockchain (PDF)
+            </a>
+          )}
         </div>
         <p className="mt-1 text-sm text-black/60 dark:text-white/60">
           {project.isrc ? `ISRC ${project.isrc} · ` : ""}
