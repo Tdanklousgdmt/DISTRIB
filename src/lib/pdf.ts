@@ -146,6 +146,7 @@ export interface LedgerPdfRow {
   label: string;
   method: string;
   hash: string;
+  userLabel: string;
   status: "success" | "failed" | "pending" | "introuvable";
   blockNumber: number | null;
   date: Date | null;
@@ -165,14 +166,15 @@ export interface LedgerPdfData {
 }
 
 const LEDGER_COLS = [
-  { key: "hash", label: "Transaction Hash", width: 95 },
-  { key: "method", label: "Method", width: 130 },
-  { key: "block", label: "Block", width: 55 },
-  { key: "date", label: "Date", width: 90 },
-  { key: "from", label: "From", width: 85 },
-  { key: "to", label: "To", width: 85 },
-  { key: "amount", label: "Amount", width: 55 },
-  { key: "fee", label: "Txn Fee", width: 70 },
+  { key: "hash", label: "Transaction Hash", width: 90 },
+  { key: "method", label: "Method", width: 100 },
+  { key: "user", label: "User", width: 95 },
+  { key: "block", label: "Block", width: 50 },
+  { key: "date", label: "Date", width: 85 },
+  { key: "from", label: "From", width: 75 },
+  { key: "to", label: "To", width: 75 },
+  { key: "amount", label: "Amount", width: 50 },
+  { key: "fee", label: "Txn Fee", width: 65 },
 ] as const;
 
 function truncateToWidth(font: PDFFont, text: string, size: number, maxWidth: number): string {
@@ -270,7 +272,8 @@ export async function buildLedgerPdf(data: LedgerPdfData): Promise<Uint8Array> {
     let x = MARGIN;
     const cells: Array<{ text: string; font: PDFFont; color?: ReturnType<typeof rgb> }> = [
       { text: truncateHash(row.hash), font: mono },
-      { text: truncateToWidth(regular, row.method, 8.5, 122), font: regular },
+      { text: truncateToWidth(regular, row.method, 8.5, 92), font: regular },
+      { text: truncateToWidth(regular, row.userLabel, 8.5, 88), font: regular },
       { text: row.blockNumber != null ? String(row.blockNumber) : "—", font: regular },
       {
         text: row.date

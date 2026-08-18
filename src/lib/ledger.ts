@@ -11,11 +11,17 @@ import type { LedgerPdfData, LedgerPdfRow } from "@/lib/pdf";
 // puis interroge Polygon pour chacun (bloc, date, wallets, frais).
 // ─────────────────────────────────────────────────────────────────────────────
 
+export interface LedgerUser {
+  name: string | null;
+  email: string;
+}
+
 export interface LedgerRow {
   label: string; // ex : "Fichier — master.wav" ou "Version 2 — approbation finale"
   method: string; // ex : "Ancrage SHA-256 (preuve d'antériorité)" ou "approveVersion"
   onchain: OnchainTxInfo | null; // null = tx non trouvée ou stack non configurée
   rawHash: string;
+  user: LedgerUser; // l'utilisateur DISTRIB à l'origine de cette action (pas le wallet)
 }
 
 export interface ProjectLedger {
@@ -33,13 +39,19 @@ export async function buildProjectLedger(projectId: string): Promise<ProjectLedg
     include: {
       versions: {
         orderBy: { versionNumber: "asc" },
-        include: { files: { orderBy: { uploadedAt: "asc" } } },
+        include: {
+          files: {
+            orderBy: { uploadedAt: "asc" },
+            include: { uploadedBy: { select: { name: true, email: true } } },
+          },
+          createdBy: { select: { name: true, email: true } },
+        },
       },
     },
   });
   if (!project) return null;
 
-  const targets: Array<{ label: string; method: string; hash: string }> = [];
+  const targets: Array<{ label: string; method: string; hash: string; user: LedgerUser }> = [];
 
   for (const v of project.versions) {
     for (const f of v.files) {
@@ -48,6 +60,7 @@ export async function buildProjectLedger(projectId: string): Promise<ProjectLedg
           label: `Version ${v.versionNumber} — fichier « ${f.filename} »`,
           method: "Ancrage SHA-256 (preuve d'antériorité)",
           hash: f.polygonTxHash,
+          user: f.uploadedBy,
         });
       }
     }
@@ -56,6 +69,7 @@ export async function buildProjectLedger(projectId: string): Promise<ProjectLedg
         label: `Version ${v.versionNumber} — approbation finale`,
         method: "approveVersion (contrat DistribRegistry)",
         hash: v.finalPolygonTxHash,
+        user: v.createdBy,
       });
     }
   }
@@ -65,6 +79,7 @@ export async function buildProjectLedger(projectId: string): Promise<ProjectLedg
       label: t.label,
       method: t.method,
       rawHash: t.hash,
+      user: t.user,
       onchain: await getOnchainTxInfo(t.hash),
     })),
   );
@@ -91,6 +106,7 @@ export function toLedgerPdfData(ledger: ProjectLedger): LedgerPdfData {
         label: r.label,
         method: r.method,
         hash: r.rawHash,
+        userLabel: r.user.name ?? r.user.email,
         status: r.onchain?.status ?? "introuvable",
         blockNumber: r.onchain?.blockNumber ?? null,
         date: r.onchain?.timestamp ?? null,

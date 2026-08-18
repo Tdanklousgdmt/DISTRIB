@@ -30,6 +30,9 @@ export default async function AppLayout({
             <Link href="/projects" className="hover:underline">
               Mes projets
             </Link>
+            <Link href="/vault" className="hover:underline">
+              Vault
+            </Link>
             <Link href="/concerts" className="hover:underline">
               Concerts
             </Link>

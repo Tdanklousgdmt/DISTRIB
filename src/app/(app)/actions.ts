@@ -25,7 +25,7 @@ import {
 // actions sont joignables en POST direct, pas seulement via l'UI — cf. doc Next).
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type ActionState = { error?: string } | undefined;
+export type ActionState = { error?: string; versionId?: string } | undefined;
 
 /** Crée un projet (racine du vault) dont l'utilisateur est propriétaire. */
 export async function createProjectAction(
@@ -120,7 +120,11 @@ export async function createVersionAction(
   await requestApprovals(version.id);
 
   revalidatePath(`/projects/${projectId}`);
-  return undefined;
+  revalidatePath("/vault");
+  // versionId renvoyé pour les flux qui enchaînent immédiatement un upload
+  // (ex. dépôt rapide depuis /vault) — ignoré par les appelants qui n'en ont
+  // pas besoin (ex. NewVersionForm ne lit que state?.error).
+  return { versionId: version.id };
 }
 
 /** Invite un contributeur (par e-mail) sur un projet. Réservé au propriétaire. */

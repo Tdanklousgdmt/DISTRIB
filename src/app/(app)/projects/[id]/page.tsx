@@ -10,17 +10,7 @@ import { ApprovalDecision } from "./ApprovalDecision";
 import { SplitsEditor } from "./SplitsEditor";
 import { DeclareOeuvreButton } from "./DeclareOeuvreButton";
 import { buildProjectLedger } from "@/lib/ledger";
-
-function formatBytes(bytes: bigint): string {
-  const units = ["o", "Ko", "Mo", "Go"];
-  let n = Number(bytes);
-  let i = 0;
-  while (n >= 1024 && i < units.length - 1) {
-    n /= 1024;
-    i++;
-  }
-  return `${n.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
-}
+import { formatBytes } from "@/lib/format";
 
 const versionStatusLabels: Record<string, string> = {
   PENDING: "En attente d'approbation",
@@ -370,12 +360,13 @@ export default async function ProjectDetailPage({
             interrogées en direct sur la blockchain, non stockées.
           </p>
           <div className="overflow-x-auto rounded-xl border border-black/10 dark:border-white/10">
-            <table className="w-full min-w-[900px] text-left text-xs">
+            <table className="w-full min-w-[1000px] text-left text-xs">
               <thead>
                 <tr className="border-b border-black/10 text-black/50 dark:border-white/10 dark:text-white/50">
                   <th className="px-3 py-2 font-medium">Objet</th>
                   <th className="px-3 py-2 font-medium">Transaction Hash</th>
                   <th className="px-3 py-2 font-medium">Method</th>
+                  <th className="px-3 py-2 font-medium">User</th>
                   <th className="px-3 py-2 font-medium">Block</th>
                   <th className="px-3 py-2 font-medium">Date</th>
                   <th className="px-3 py-2 font-medium">From</th>
@@ -406,6 +397,7 @@ export default async function ProjectDetailPage({
                       )}
                     </td>
                     <td className="px-3 py-2">{row.method}</td>
+                    <td className="px-3 py-2">{row.user.name ?? row.user.email}</td>
                     <td className="px-3 py-2 tabular-nums">
                       {row.onchain?.blockNumber ?? "—"}
                     </td>
