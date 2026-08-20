@@ -334,6 +334,20 @@ Voir `.env.example` — regroupées par service : base de données (`DATABASE_UR
 - Wallet serveur : `0xED2a9C2c3DD0BA7f28a92A824D0fcF2DB4032556`
 - Explorateur : https://amoy.polygonscan.com/address/0x3F3B3256467d4aab444e272237a2cc0067431567
 
+### Coûts réels sur Polygon mainnet (snapshot 19 août 2026)
+
+Estimation à partir de la consommation de gas **réellement mesurée** sur les transactions Amoy (le contrat mainnet sera identique) et du prix du gas mainnet interrogé en direct ce jour-là (deux lectures indépendantes, 270-280 gwei — stable, pas un pic isolé) et du cours du POL (~0,108 €).
+
+| Transaction | Gas consommé | Coût |
+|---|---|---|
+| Ancrage d'un fichier (`anchorFileHash`) | 24 160 | ~0,0007 € |
+| Approbation de version (`approveVersion`) | 92 546 | ~0,0028 € |
+| Enregistrement d'un projet (`registerProject`, estimation) | ~60 000 | ~0,0018 € |
+
+Un cycle complet (dépôt + approbation finale) coûte donc **~0,0035 €** — le budget de ~20 € de POL prévu par le doc master couvre plusieurs milliers de transactions à ce niveau de prix.
+
+⚠️ **Le gas Polygon est volatile.** Ce tableau est une photo à un instant T, pas une garantie permanente — revérifier le prix du gas à plusieurs moments avant le passage en mainnet plutôt que de se fier à un seul relevé.
+
 ---
 
 *Document généré à partir du code du dépôt `Tdanklousgdmt/DISTRIB` et de l'historique de développement au 18 août 2026. À mettre à jour à chaque changement de périmètre.*
