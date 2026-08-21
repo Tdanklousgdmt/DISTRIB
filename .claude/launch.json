@@ -3,9 +3,7 @@
   "configurations": [
     {
       "name": "distrib-dev",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "/Users/tetedanklou/Documents/Claude/Projects/distrib", "run", "dev"],
-      "port": 3000
+      "url": "http://localhost:3000"
     }
   ]
 }
