@@ -104,6 +104,7 @@ enum NotificationType {
   PAYMENT_RECEIVED
   SPLIT_SIGNED
   SPLIT_INVALIDATED
+  SPLIT_SIGNATURE_REQUESTED
   PENDING_REMINDER
   MONTHLY_DIGEST
 }
@@ -228,6 +229,11 @@ model ProjectContributor {
   invitedAt  DateTime        @default(now())
   acceptedAt DateTime?
 
+  // Parcours du collaborateur invité (§2.4) : il reçoit un LIEN, découvre le
+  // projet sans compte, crée son accès pour approuver. Le jeton est à usage
+  // de découverte ; l'accès reste soumis à la connexion par e-mail.
+  inviteToken String? @unique
+
   project   Project    @relation(fields: [projectId], references: [id], onDelete: Restrict)
   user      User       @relation(fields: [userId], references: [id], onDelete: Restrict)
   approvals Approval[]
@@ -256,6 +262,13 @@ model Version {
 
   // Durée déclarée de l'œuvre — requise par la checklist de déclaration SACEM.
   durationSeconds Int?
+
+  // « Votre rôle sur ce dépôt » (écran Dépôt d'un fichier du prototype) :
+  // saisi au moment du dépôt, avec sa précision libre (« voix », « mix »).
+  // Distinct du rôle projet du contributeur : un beatmaker peut déposer une
+  // topline sur un projet donné.
+  depositRole       ContributorRole?
+  depositRoleDetail String?
 
   // Hash on-chain au dépôt (preuve d'antériorité), puis tx finale après unanimité
   initialPolygonTxHash String?

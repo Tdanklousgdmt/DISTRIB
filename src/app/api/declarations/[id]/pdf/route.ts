@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
 
+import { prisma } from "@/lib/prisma";
 import { getUser } from "@/lib/session";
 import { canAccessDeclaration, renderDeclarationPdf } from "@/lib/declarations";
+import { readVaultObject } from "@/lib/storage";
 
-// GET /api/declarations/:id/pdf — télécharge le bulletin SACEM (généré à la volée).
+// GET /api/declarations/:id/pdf — le bulletin : soit la fiche que l'artiste a
+// déposée lui-même (archivée dans le vault, servie telle quelle), soit le
+// bulletin généré à la volée depuis les données du projet.
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -16,6 +20,20 @@ export async function GET(
   const { id } = await params;
   if (!(await canAccessDeclaration(id, user.id))) {
     return NextResponse.json({ error: "Accès refusé." }, { status: 403 });
+  }
+
+  const declaration = await prisma.sacemDeclaration.findUnique({
+    where: { id },
+    select: { pdfS3Key: true },
+  });
+  if (declaration?.pdfS3Key) {
+    const bytes = await readVaultObject(declaration.pdfS3Key);
+    return new NextResponse(new Uint8Array(bytes), {
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="fiche-sacem-deposee.pdf"`,
+      },
+    });
   }
 
   const pdf = await renderDeclarationPdf(id);

@@ -1,10 +1,13 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
+
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
+import { sendEmail } from "@/lib/email";
 import { registerProjectOnchain } from "@/lib/blockchain";
 import {
   createNotification,
@@ -13,6 +16,7 @@ import {
   requestApprovals,
 } from "@/lib/vault";
 import {
+  attachOwnFicheSchema,
   createProjectSchema,
   createVersionSchema,
   decideApprovalSchema,
@@ -27,7 +31,9 @@ import { findProjectTemplate } from "@/lib/project-templates";
 // actions sont joignables en POST direct, pas seulement via l'UI — cf. doc Next).
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type ActionState = { error?: string; versionId?: string } | undefined;
+export type ActionState =
+  | { error?: string; versionId?: string; inviteUrl?: string }
+  | undefined;
 
 /** Crée un projet (racine du vault) dont l'utilisateur est propriétaire. */
 export async function createProjectAction(
@@ -83,11 +89,20 @@ export async function createVersionAction(
     description: formData.get("description"),
     parentVersionId: formData.get("parentVersionId") || undefined,
     durationSeconds: formData.get("duration") || undefined,
+    depositRole: formData.get("depositRole"),
+    depositRoleDetail: formData.get("depositRoleDetail") ?? "",
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Données invalides." };
   }
-  const { projectId, description, parentVersionId, durationSeconds } = parsed.data;
+  const {
+    projectId,
+    description,
+    parentVersionId,
+    durationSeconds,
+    depositRole,
+    depositRoleDetail,
+  } = parsed.data;
 
   // Autorisation : propriétaire ou contributeur du projet.
   const project = await prisma.project.findUnique({
@@ -115,6 +130,8 @@ export async function createVersionAction(
       description,
       parentVersionId: parentVersionId ?? null,
       durationSeconds: durationSeconds ?? null,
+      depositRole,
+      depositRoleDetail: depositRoleDetail ?? null,
       createdById: user.id,
       status: "PENDING",
     },
@@ -128,7 +145,7 @@ export async function createVersionAction(
   revalidatePath("/vault");
   // versionId renvoyé pour les flux qui enchaînent immédiatement un upload
   // (ex. dépôt rapide depuis /vault) — ignoré par les appelants qui n'en ont
-  // pas besoin (ex. NewVersionForm ne lit que state?.error).
+  // pas besoin (ex. un formulaire qui ne lit que state?.error).
   return { versionId: version.id };
 }
 
@@ -163,10 +180,14 @@ export async function inviteContributorAction(
     create: { email },
   });
 
+  // Parcours du collaborateur invité (§2.4) : un LIEN, pas seulement un compte.
+  // Il découvre le projet sans être connecté, puis crée son accès pour approuver.
+  let inviteToken: string;
   try {
-    await prisma.projectContributor.create({
-      data: { projectId, userId: invitee.id, role },
+    const contributor = await prisma.projectContributor.create({
+      data: { projectId, userId: invitee.id, role, inviteToken: randomUUID() },
     });
+    inviteToken = contributor.inviteToken!;
   } catch (e) {
     if (isUniqueViolation(e)) {
       return { error: "Cette personne contribue déjà au projet." };
@@ -174,14 +195,25 @@ export async function inviteContributorAction(
     throw e;
   }
 
+  const base = (process.env.AUTH_URL ?? "http://localhost:3000").replace(/\/$/, "");
+  const inviteUrl = `${base}/invite/${inviteToken}`;
+
   await createNotification({
     userId: invitee.id,
     type: "CONTRIBUTOR_INVITED",
-    payload: { projectId, projectTitle: project.title, role },
+    payload: { projectId, projectTitle: project.title, role, inviteUrl },
+  });
+
+  // E-mail best-effort (no-op sans RESEND_API_KEY) — le lien affiché à
+  // l'inviteur reste le canal principal tant que l'e-mail n'est pas provisionné.
+  await sendEmail({
+    to: email,
+    subject: `Vous êtes invité·e à contribuer à « ${project.title} »`,
+    text: `${user.name ?? user.email} vous invite sur DISTRIB pour approuver et signer votre part sur « ${project.title} ».\n\nDécouvrir le projet : ${inviteUrl}`,
   });
 
   revalidatePath(`/projects/${projectId}`);
-  return undefined;
+  return { inviteUrl };
 }
 
 /** Approuve ou rejette une version (le reviewer décide pour SA part). */
@@ -321,6 +353,108 @@ export async function setSplitsAction(
   }
 
   revalidatePath(`/projects/${version.projectId}`);
+  return undefined;
+}
+
+/**
+ * « Adresser en signature » (fiche SACEM, écran p.66 du prototype) : enregistre
+ * la répartition proposée puis notifie chaque contributeur qu'une part l'attend.
+ * Réutilise setSplitsAction — donc hérite de la cascade d'invalidation si une
+ * répartition signée est modifiée.
+ */
+export async function sendSplitsForSignatureAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const saved = await setSplitsAction(_prev, formData);
+  if (saved?.error) return saved;
+
+  const user = await requireUser();
+  const versionId = String(formData.get("versionId") ?? "");
+  const version = await prisma.version.findUnique({
+    where: { id: versionId },
+    include: {
+      project: { include: { contributors: { include: { user: { select: { email: true } } } } } },
+    },
+  });
+  if (!version) return { error: "Version introuvable." };
+
+  await Promise.all(
+    version.project.contributors.map(async (c) => {
+      await createNotification({
+        userId: c.userId,
+        type: "SPLIT_SIGNATURE_REQUESTED",
+        payload: {
+          projectId: version.projectId,
+          projectTitle: version.project.title,
+          versionId,
+          versionNumber: version.versionNumber,
+        },
+      });
+      if (c.userId !== user.id) {
+        await sendEmail({
+          to: c.user.email,
+          subject: `Votre part sur « ${version.project.title} » attend votre signature`,
+          text: `Une répartition des droits vous est adressée en signature sur DISTRIB : « ${version.project.title} » (version ${version.versionNumber}).`,
+        });
+      }
+    }),
+  );
+
+  revalidatePath(`/projects/${version.projectId}/fiche-sacem`);
+  return undefined;
+}
+
+/**
+ * « Déposer ma propre fiche » : l'artiste a déjà établi sa déclaration. Le PDF
+ * est versé au vault (immuable, daté) puis rattaché comme bulletin de la
+ * version — DISTRIB « se charge uniquement de la faire signer et de l'archiver ».
+ */
+export async function attachOwnFicheAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const user = await requireUser();
+  const parsed = attachOwnFicheSchema.safeParse({
+    versionId: formData.get("versionId"),
+    vaultFileId: formData.get("vaultFileId"),
+  });
+  if (!parsed.success) return { error: "Données invalides." };
+  const { versionId, vaultFileId } = parsed.data;
+
+  const version = await prisma.version.findUnique({
+    where: { id: versionId },
+    include: {
+      project: { include: { contributors: { select: { userId: true } } } },
+      declarations: { where: { type: "OEUVRE" }, select: { id: true } },
+    },
+  });
+  if (!version) return { error: "Version introuvable." };
+  const member =
+    version.project.ownerId === user.id ||
+    version.project.contributors.some((c) => c.userId === user.id);
+  if (!member) return { error: "Accès refusé." };
+  if (version.declarations.length > 0) {
+    return { error: "Cette version a déjà un bulletin de déclaration." };
+  }
+
+  const file = await prisma.vaultFile.findUnique({ where: { id: vaultFileId } });
+  if (!file || file.versionId !== versionId) return { error: "Fichier introuvable." };
+
+  await prisma.sacemDeclaration.create({
+    data: {
+      type: "OEUVRE",
+      projectId: version.projectId,
+      versionId,
+      status: "PENDING_SIGNATURE",
+      pdfS3Bucket: file.s3Bucket,
+      pdfS3Key: file.s3Key,
+    },
+  });
+
+  revalidatePath(`/projects/${version.projectId}`);
+  revalidatePath(`/projects/${version.projectId}/fiche-sacem`);
+  revalidatePath("/revenus");
   return undefined;
 }
 

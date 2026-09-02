@@ -17,6 +17,7 @@ const typeLabels: Record<string, string> = {
   PAYMENT_RECEIVED: "Paiement reçu",
   SPLIT_SIGNED: "Répartition signée",
   SPLIT_INVALIDATED: "Signature de répartition invalidée",
+  SPLIT_SIGNATURE_REQUESTED: "Répartition adressée en signature",
   PENDING_REMINDER: "Rappel — action en attente",
   MONTHLY_DIGEST: "Récapitulatif mensuel",
 };
@@ -38,6 +39,10 @@ function describe(type: string, payload: unknown): string {
         : "Votre version a été approuvée.";
     case "VERSION_REJECTED":
       return title ? `Version ${vn ?? ""} de « ${title} » rejetée.` : "Votre version a été rejetée.";
+    case "SPLIT_SIGNATURE_REQUESTED":
+      return title
+        ? `La répartition de « ${title} »${vn ? ` (version ${vn})` : ""} vous est adressée en signature.`
+        : "Une répartition vous est adressée en signature.";
     case "SPLIT_INVALIDATED":
       return title
         ? `La répartition de « ${title} » a changé — votre signature n'est plus valable.`

@@ -32,18 +32,6 @@ export const durationInputSchema = z
     return h * 3600 + m * 60 + s;
   });
 
-export const createVersionSchema = z.object({
-  projectId: z.string().min(1),
-  description: z
-    .string()
-    .trim()
-    .min(1, "Décrivez votre contribution — c'est la preuve de paternité")
-    .max(5000),
-  parentVersionId: z.string().min(1).optional(),
-  durationSeconds: durationInputSchema,
-});
-export type CreateVersionInput = z.infer<typeof createVersionSchema>;
-
 // Rôles de contributeur — cohérent avec l'enum Prisma ContributorRole.
 export const contributorRoles = [
   "ARTIST",
@@ -51,6 +39,34 @@ export const contributorRoles = [
   "BEATMAKER",
   "CO_BEATMAKER",
 ] as const;
+
+export const contributorRoleLabels: Record<(typeof contributorRoles)[number], string> = {
+  ARTIST: "Artiste",
+  CO_AUTHOR: "Co-auteur·e",
+  BEATMAKER: "Beatmaker",
+  CO_BEATMAKER: "Co-beatmaker",
+};
+
+// Un dépôt = fichier(s) + « votre rôle sur ce dépôt » + attestation de
+// contribution (écran « Dépôt d'un fichier » du prototype, §2.7).
+export const createVersionSchema = z.object({
+  projectId: z.string().min(1),
+  description: z
+    .string()
+    .trim()
+    .min(1, "Votre attestation est requise — c'est votre preuve de paternité")
+    .max(5000),
+  parentVersionId: z.string().min(1).optional(),
+  durationSeconds: durationInputSchema,
+  depositRole: z.enum(contributorRoles),
+  depositRoleDetail: z
+    .string()
+    .trim()
+    .max(60)
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
+});
+export type CreateVersionInput = z.infer<typeof createVersionSchema>;
 
 export const inviteContributorSchema = z.object({
   projectId: z.string().min(1),
@@ -129,6 +145,13 @@ export const ipiCodeSchema = z
   .regex(/^\d{9,11}$/, "Code IPI invalide (9 à 11 chiffres)")
   .optional()
   .or(z.literal("").transform(() => undefined));
+
+// « Déposer ma propre fiche » : rattache un PDF déjà versé au vault (immuable)
+// comme bulletin de déclaration de la version.
+export const attachOwnFicheSchema = z.object({
+  versionId: z.string().min(1),
+  vaultFileId: z.string().min(1),
+});
 
 export const markDeclarationPaidSchema = z.object({
   declarationId: z.string().min(1),

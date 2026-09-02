@@ -40,15 +40,7 @@ const NAV_SECTIONS: Array<{
   },
 ];
 
-const AVATAR_COLORS = ["#4B4E8F", "#3F7A5E", "#8F5A3F", "#5A5A8F", "#3F7A8F", "#8F3F5A"];
-function avatarColor(seed: string): string {
-  let hash = 0;
-  for (let i = 0; i < seed.length; i++) hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
-  return AVATAR_COLORS[hash % AVATAR_COLORS.length];
-}
-function initials(email: string): string {
-  return (email.trim()[0] ?? "?").toUpperCase() + (email.trim()[1] ?? "").toUpperCase();
-}
+import { avatarColor, initials } from "@/lib/avatar";
 
 function Icon({ name }: { name: string }) {
   return (
