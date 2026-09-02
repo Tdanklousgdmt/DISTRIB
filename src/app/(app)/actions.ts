@@ -490,6 +490,7 @@ export async function signSplitAction(
   });
 
   revalidatePath(`/projects/${split.version.projectId}`);
+  revalidatePath(`/projects/${split.version.projectId}/fiche-sacem`);
   return undefined;
 }
 

@@ -6,7 +6,14 @@ import { PrismaClient } from "@/generated/prisma/client";
 // adapter natif. Pour Supabase Postgres → @prisma/adapter-pg, alimenté par
 // DATABASE_URL (pooler transaction, port 6543).
 function createClient() {
-  const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
+  const adapter = new PrismaPg({
+    connectionString: process.env.DATABASE_URL,
+    // Le serveur (Postgres local `prisma dev`, pooler Supabase ensuite) ferme
+    // les connexions inactives : on les recycle avant lui et on garde les
+    // sockets vivants, sinon « Server has closed the connection » au hasard.
+    idleTimeoutMillis: 10_000,
+    keepAlive: true,
+  });
   return new PrismaClient({
     adapter,
     log:
