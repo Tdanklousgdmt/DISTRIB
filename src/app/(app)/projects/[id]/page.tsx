@@ -8,9 +8,12 @@ import { UploadForm } from "./UploadForm";
 import { InviteContributorForm } from "./InviteContributorForm";
 import { ApprovalDecision } from "./ApprovalDecision";
 import { SplitsEditor } from "./SplitsEditor";
+import { SplitSignButton } from "./SplitSignButton";
 import { DeclareOeuvreButton } from "./DeclareOeuvreButton";
 import { buildProjectLedger } from "@/lib/ledger";
-import { formatBytes } from "@/lib/format";
+import { formatBytes, formatDuration } from "@/lib/format";
+import { aiDisclosureLabels } from "@/lib/validators";
+import { findProjectTemplate } from "@/lib/project-templates";
 
 const versionStatusLabels: Record<string, string> = {
   PENDING: "En attente d'approbation",
@@ -34,10 +37,14 @@ const roleLabels: Record<string, string> = {
 
 export default async function ProjectDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ template?: string }>;
 }) {
   const { id } = await params;
+  const { template: templateKey } = await searchParams;
+  const template = findProjectTemplate(templateKey);
   const user = await requireUser();
 
   const project = await prisma.project.findUnique({
@@ -96,10 +103,17 @@ export default async function ProjectDetailPage({
               "rounded-full px-2 py-0.5 text-xs " +
               (project.canPublish
                 ? "bg-green-500/15 text-green-700 dark:text-green-400"
-                : "bg-amber-500/15 text-amber-700 dark:text-amber-400")
+                : project.publishBlockedReason
+                  ? "bg-red-500/15 text-red-700 dark:text-red-400"
+                  : "bg-amber-500/15 text-amber-700 dark:text-amber-400")
             }
+            title={project.publishBlockedReason ?? undefined}
           >
-            {project.canPublish ? "Publiable" : "En cours"}
+            {project.canPublish
+              ? "Publiable"
+              : project.publishBlockedReason
+                ? `Bloqué — ${project.publishBlockedReason}`
+                : "En cours"}
           </span>
           {hasOnchainTx && (
             <a
@@ -156,6 +170,7 @@ export default async function ProjectDetailPage({
                     </p>
                     <p className="mt-1 text-xs text-black/40 dark:text-white/40">
                       par {v.createdBy.name ?? v.createdBy.email}
+                      {v.durationSeconds != null && ` · ${formatDuration(v.durationSeconds)}`}
                       {v.finalizedAt &&
                         ` · protégée le ${v.finalizedAt.toLocaleDateString("fr-FR")}`}
                     </p>
@@ -164,22 +179,29 @@ export default async function ProjectDetailPage({
                     {v.files.length > 0 && (
                       <ul className="mt-3 space-y-1.5 border-t border-black/10 pt-3 dark:border-white/10">
                         {v.files.map((f) => (
-                          <li
-                            key={f.id}
-                            className="flex items-center justify-between gap-3 text-sm"
-                          >
-                            <span className="min-w-0 truncate">
-                              <span className="rounded bg-black/5 px-1.5 py-0.5 text-[10px] font-medium dark:bg-white/10">
-                                {f.fileType}
-                              </span>{" "}
-                              {f.filename}
-                            </span>
-                            <span
-                              className="shrink-0 font-mono text-xs text-black/40 dark:text-white/40"
-                              title={`SHA-256 ${f.sha256Hash}`}
-                            >
-                              {formatBytes(f.sizeBytes)} · {f.sha256Hash.slice(0, 10)}…
-                            </span>
+                          <li key={f.id} className="text-sm">
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="min-w-0 truncate">
+                                <span className="rounded bg-black/5 px-1.5 py-0.5 text-[10px] font-medium dark:bg-white/10">
+                                  {f.fileType}
+                                </span>{" "}
+                                {f.filename}
+                              </span>
+                              <span
+                                className="shrink-0 font-mono text-xs text-black/40 dark:text-white/40"
+                                title={`SHA-256 ${f.sha256Hash}`}
+                              >
+                                {formatBytes(f.sizeBytes)} · {f.sha256Hash.slice(0, 10)}…
+                              </span>
+                            </div>
+                            {f.aiCategories.length > 0 && (
+                              <p className="mt-0.5 text-[11px] text-amber-700 dark:text-amber-400">
+                                IA déclarée :{" "}
+                                {f.aiCategories
+                                  .map((c) => aiDisclosureLabels[c])
+                                  .join(", ")}
+                              </p>
+                            )}
                           </li>
                         ))}
                       </ul>
@@ -265,11 +287,15 @@ export default async function ProjectDetailPage({
                           }))}
                         />
                       ) : (
-                        <ul className="space-y-1 text-sm">
+                        <ul className="space-y-1.5 text-sm">
                           {v.splits.map((s) => {
                             const c = contributorOptions.find(
                               (o) => o.id === s.contributorId,
                             );
+                            const contributor = project.contributors.find(
+                              (pc) => pc.id === s.contributorId,
+                            );
+                            const isMine = contributor?.userId === user.id;
                             return (
                               <li
                                 key={s.id}
@@ -283,8 +309,21 @@ export default async function ProjectDetailPage({
                                     </span>
                                   )}
                                 </span>
-                                <span className="shrink-0 font-mono text-xs tabular-nums">
-                                  {Number(s.percentage).toFixed(2)} %
+                                <span className="flex shrink-0 items-center gap-2">
+                                  <span className="font-mono text-xs tabular-nums">
+                                    {Number(s.percentage).toFixed(2)} %
+                                  </span>
+                                  {s.signedAt ? (
+                                    <span className="rounded-full bg-green-500/15 px-2 py-0.5 text-[11px] text-green-700 dark:text-green-400">
+                                      Signée
+                                    </span>
+                                  ) : isMine ? (
+                                    <SplitSignButton splitId={s.id} />
+                                  ) : (
+                                    <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] text-amber-700 dark:text-amber-400">
+                                      En attente
+                                    </span>
+                                  )}
                                 </span>
                               </li>
                             );
@@ -333,11 +372,31 @@ export default async function ProjectDetailPage({
               <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-black/50 dark:text-white/50">
                 Inviter un contributeur
               </h2>
+              {template && (
+                <p className="mb-2 text-xs text-black/50 dark:text-white/50">
+                  Modèle « {template.label} » — {template.hint}
+                </p>
+              )}
               <div className="rounded-xl border border-black/10 p-4 dark:border-white/10">
-                <InviteContributorForm projectId={project.id} />
+                <InviteContributorForm
+                  projectId={project.id}
+                  defaultRole={template?.suggestedRoles[0]}
+                />
               </div>
             </div>
           )}
+
+          <div>
+            <Link
+              href={`/projects/${project.id}/fiche-sacem`}
+              className="block rounded-xl border border-black/10 p-4 text-sm hover:border-black/20 dark:border-white/10 dark:hover:border-white/25"
+            >
+              <span className="font-medium">Fiche SACEM →</span>
+              <p className="mt-1 text-xs text-black/50 dark:text-white/50">
+                État de complétude du dossier de déclaration.
+              </p>
+            </Link>
+          </div>
         </aside>
       </section>
 

@@ -47,6 +47,7 @@ export async function POST(request: Request) {
   const parsed = uploadMetadataSchema.safeParse({
     versionId: form.get("versionId"),
     fileType: form.get("fileType") ?? fileTypeFromName(file.name),
+    aiCategories: form.getAll("aiCategories"),
   });
   if (!parsed.success) {
     return NextResponse.json(
@@ -54,7 +55,7 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
-  const { versionId, fileType } = parsed.data;
+  const { versionId, fileType, aiCategories } = parsed.data;
 
   // Autorisation : la version doit appartenir à un projet où l'user est
   // propriétaire ou contributeur.
@@ -113,6 +114,7 @@ export async function POST(request: Request) {
       objectLockRetainUntil: stored.retainUntil,
       sha256Hash: hash,
       polygonTxHash,
+      aiCategories,
       uploadedById: user.id,
     },
   });

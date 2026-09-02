@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { createSignatureRequest } from "@/lib/yousign";
 import { renderDeclarationPdf } from "@/lib/declarations";
+import { buildSacemChecklist } from "@/lib/sacem-checklist";
 import {
   createConcertSchema,
   markDeclarationPaidSchema,
@@ -145,14 +146,18 @@ export async function declareOeuvreAction(
     version.project.contributors.some((c) => c.userId === user.id);
   if (!member) return { error: "Accès refusé." };
 
-  if (version.status !== "APPROVED") {
-    return { error: "Seule une version approuvée à l'unanimité peut être déclarée." };
-  }
-  if (version.splits.length === 0) {
-    return { error: "Définissez la répartition des droits avant de déclarer l'œuvre." };
-  }
   if (version.declarations.length > 0) {
     return { error: "Cette version est déjà déclarée." };
+  }
+
+  const checklist = await buildSacemChecklist(version.id);
+  if (!checklist || !checklist.ready) {
+    const firstMissing = checklist?.items.find((i) => i.blocking && !i.ok);
+    return {
+      error: firstMissing
+        ? `Checklist incomplète — ${firstMissing.label.toLowerCase()}. Voir la Fiche SACEM du projet.`
+        : "Checklist de déclaration incomplète.",
+    };
   }
 
   const declaration = await prisma.sacemDeclaration.create({

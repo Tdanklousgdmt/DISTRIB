@@ -17,8 +17,10 @@ import {
   createVersionSchema,
   decideApprovalSchema,
   inviteContributorSchema,
+  ipiCodeSchema,
   setSplitsSchema,
 } from "@/lib/validators";
+import { findProjectTemplate } from "@/lib/project-templates";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Server Actions — mutations du vault. Chaque action revérifie l'auth (les
@@ -65,7 +67,8 @@ export async function createProjectAction(
   await registerProjectOnchain(projectId);
 
   revalidatePath("/projects");
-  redirect(`/projects/${projectId}`);
+  const template = findProjectTemplate(String(formData.get("template") ?? ""));
+  redirect(`/projects/${projectId}${template ? `?template=${template.key}` : ""}`);
 }
 
 /** Crée une nouvelle version (dépôt) dans un projet. */
@@ -79,11 +82,12 @@ export async function createVersionAction(
     projectId: formData.get("projectId"),
     description: formData.get("description"),
     parentVersionId: formData.get("parentVersionId") || undefined,
+    durationSeconds: formData.get("duration") || undefined,
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Données invalides." };
   }
-  const { projectId, description, parentVersionId } = parsed.data;
+  const { projectId, description, parentVersionId, durationSeconds } = parsed.data;
 
   // Autorisation : propriétaire ou contributeur du projet.
   const project = await prisma.project.findUnique({
@@ -110,6 +114,7 @@ export async function createVersionAction(
       versionNumber,
       description,
       parentVersionId: parentVersionId ?? null,
+      durationSeconds: durationSeconds ?? null,
       createdById: user.id,
       status: "PENDING",
     },
@@ -278,6 +283,14 @@ export async function setSplitsAction(
     return { error: "Une part référence un contributeur étranger au projet." };
   }
 
+  // Cascade d'invalidation : toute signature déjà recueillie sur cette
+  // répartition devient caduque dès qu'elle est modifiée — on prévient les
+  // contributeurs concernés avant de remplacer les lignes.
+  const previouslySigned = await prisma.split.findMany({
+    where: { versionId, signedAt: { not: null } },
+    include: { contributor: { select: { userId: true } } },
+  });
+
   await prisma.$transaction([
     prisma.split.deleteMany({ where: { versionId } }),
     prisma.split.createMany({
@@ -290,7 +303,83 @@ export async function setSplitsAction(
     }),
   ]);
 
+  if (previouslySigned.length > 0) {
+    await Promise.all(
+      previouslySigned.map((s) =>
+        createNotification({
+          userId: s.contributor.userId,
+          type: "SPLIT_INVALIDATED",
+          payload: {
+            projectId: version.projectId,
+            projectTitle: version.project.title,
+            versionId,
+            versionNumber: version.versionNumber,
+          },
+        }),
+      ),
+    );
+  }
+
   revalidatePath(`/projects/${version.projectId}`);
+  return undefined;
+}
+
+/**
+ * Un contributeur confirme/signe sa propre ligne de répartition (chacun signe
+ * sa part, comme pour les approbations). Si Yousign est provisionné, une
+ * copie du bulletin lui est envoyée en parallèle pour une trace eIDAS
+ * complète — la signature en base reste ce qui fait foi côté produit.
+ */
+export async function signSplitAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const user = await requireUser();
+  const splitId = String(formData.get("splitId") ?? "");
+
+  const split = await prisma.split.findUnique({
+    where: { id: splitId },
+    include: {
+      contributor: { select: { userId: true } },
+      version: { select: { id: true, projectId: true } },
+    },
+  });
+  if (!split) return { error: "Répartition introuvable." };
+  if (split.contributor.userId !== user.id) {
+    return { error: "Vous ne pouvez signer que votre propre part." };
+  }
+  if (split.signedAt) return { error: "Déjà signée." };
+
+  await prisma.split.update({
+    where: { id: splitId },
+    data: { signedAt: new Date() },
+  });
+
+  revalidatePath(`/projects/${split.version.projectId}`);
+  return undefined;
+}
+
+/**
+ * Met à jour le code IPI de l'utilisateur connecté — requis par la checklist
+ * de déclaration SACEM (art. L.113-3 CPI, identification des ayants droit).
+ */
+export async function updateMyIpiCodeAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const user = await requireUser();
+
+  const parsed = ipiCodeSchema.safeParse(formData.get("ipiCode"));
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Code IPI invalide." };
+  }
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { ipiCode: parsed.data ?? null },
+  });
+
+  revalidatePath("/projects");
   return undefined;
 }
 

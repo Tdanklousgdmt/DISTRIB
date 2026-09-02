@@ -14,6 +14,24 @@ export const createProjectSchema = z.object({
 });
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;
 
+// Durée saisie en "mm:ss" ou "h:mm:ss" → secondes. Facultatif (requis
+// seulement pour la checklist de déclaration SACEM, pas pour déposer).
+export const durationInputSchema = z
+  .string()
+  .trim()
+  .optional()
+  .or(z.literal("").transform(() => undefined))
+  .refine(
+    (raw) => raw === undefined || /^(\d+:)?\d{1,2}:\d{2}$/.test(raw),
+    "Format de durée invalide (mm:ss)",
+  )
+  .transform((raw) => {
+    if (!raw) return undefined;
+    const parts = raw.split(":").map(Number);
+    const [h, m, s] = parts.length === 3 ? parts : [0, parts[0], parts[1]];
+    return h * 3600 + m * 60 + s;
+  });
+
 export const createVersionSchema = z.object({
   projectId: z.string().min(1),
   description: z
@@ -22,6 +40,7 @@ export const createVersionSchema = z.object({
     .min(1, "Décrivez votre contribution — c'est la preuve de paternité")
     .max(5000),
   parentVersionId: z.string().min(1).optional(),
+  durationSeconds: durationInputSchema,
 });
 export type CreateVersionInput = z.infer<typeof createVersionSchema>;
 
@@ -100,6 +119,15 @@ export const createConcertSchema = z.object({
 });
 export type CreateConcertInput = z.infer<typeof createConcertSchema>;
 
+// IPI (Interested Parties Information) — identifiant international
+// auteur/interprète, 9 à 11 chiffres, requis par la checklist SACEM.
+export const ipiCodeSchema = z
+  .string()
+  .trim()
+  .regex(/^\d{9,11}$/, "Code IPI invalide (9 à 11 chiffres)")
+  .optional()
+  .or(z.literal("").transform(() => undefined));
+
 export const markDeclarationPaidSchema = z.object({
   declarationId: z.string().min(1),
   amountEuros: z.coerce.number().positive("Montant requis").max(10_000_000),
@@ -124,9 +152,28 @@ export const vaultFileTypes = [
   "OTHER",
 ] as const;
 
+// Les 5 catégories de divulgation IA générative (format DDEX), déclarées à
+// chaque dépôt — cohérent avec l'enum Prisma AiDisclosureCategory.
+export const aiDisclosureCategories = [
+  "VOIX",
+  "INSTRUMENTATION",
+  "COMPOSITION",
+  "POST_PRODUCTION",
+  "PAROLES",
+] as const;
+
+export const aiDisclosureLabels: Record<(typeof aiDisclosureCategories)[number], string> = {
+  VOIX: "Voix générée par IA",
+  INSTRUMENTATION: "Instrumentation générée par IA",
+  COMPOSITION: "Composition assistée par IA",
+  POST_PRODUCTION: "Post-production assistée par IA",
+  PAROLES: "Paroles générées par IA",
+};
+
 export const uploadMetadataSchema = z.object({
   versionId: z.string().min(1),
   fileType: z.enum(vaultFileTypes),
+  aiCategories: z.array(z.enum(aiDisclosureCategories)).max(5).default([]),
 });
 export type UploadMetadataInput = z.infer<typeof uploadMetadataSchema>;
 

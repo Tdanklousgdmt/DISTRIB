@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 
+import { PROJECT_TEMPLATES } from "@/lib/project-templates";
 import { createProjectAction, type ActionState } from "../actions";
 
 export function NewProjectForm() {
@@ -24,6 +25,27 @@ export function NewProjectForm() {
           placeholder="Ex : Nuit blanche"
           className="mt-1 w-full rounded-lg border border-black/15 bg-transparent px-3 py-2 text-sm outline-none focus:border-foreground dark:border-white/20"
         />
+      </div>
+      <div>
+        <label htmlFor="template" className="block text-sm font-medium">
+          Modèle <span className="font-normal text-black/40 dark:text-white/40">(optionnel)</span>
+        </label>
+        <select
+          id="template"
+          name="template"
+          className="mt-1 w-full rounded-lg border border-black/15 bg-transparent px-3 py-2 text-sm outline-none focus:border-foreground dark:border-white/20"
+          defaultValue=""
+        >
+          <option value="">Personnalisé</option>
+          {PROJECT_TEMPLATES.map((t) => (
+            <option key={t.key} value={t.key}>
+              {t.label}
+            </option>
+          ))}
+        </select>
+        <p className="mt-1 text-xs text-black/50 dark:text-white/50">
+          Suggère les rôles à inviter — rien n&apos;est verrouillé.
+        </p>
       </div>
       <div>
         <label htmlFor="isrc" className="block text-sm font-medium">

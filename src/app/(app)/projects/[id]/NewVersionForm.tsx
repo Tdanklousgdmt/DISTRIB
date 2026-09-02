@@ -30,6 +30,22 @@ export function NewVersionForm({ projectId }: { projectId: string }) {
           Cette description est horodatée — c&apos;est votre preuve de paternité.
         </p>
       </div>
+      <div>
+        <label htmlFor="duration" className="block text-sm font-medium">
+          Durée <span className="font-normal text-black/40 dark:text-white/40">(facultatif)</span>
+        </label>
+        <input
+          id="duration"
+          name="duration"
+          type="text"
+          placeholder="mm:ss"
+          pattern="^(\d+:)?\d{1,2}:\d{2}$"
+          className="mt-1 w-28 rounded-lg border border-black/15 bg-transparent px-3 py-2 text-sm outline-none focus:border-foreground dark:border-white/20"
+        />
+        <p className="mt-1 text-xs text-black/50 dark:text-white/50">
+          Requis pour la checklist de déclaration SACEM — renseignable plus tard.
+        </p>
+      </div>
       {state?.error && <p className="text-sm text-red-600">{state.error}</p>}
       <button
         type="submit"

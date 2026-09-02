@@ -11,7 +11,13 @@ const roleOptions = [
   { value: "ARTIST", label: "Artiste" },
 ];
 
-export function InviteContributorForm({ projectId }: { projectId: string }) {
+export function InviteContributorForm({
+  projectId,
+  defaultRole,
+}: {
+  projectId: string;
+  defaultRole?: string;
+}) {
   const [state, action, pending] = useActionState<ActionState, FormData>(
     inviteContributorAction,
     undefined,
@@ -40,6 +46,7 @@ export function InviteContributorForm({ projectId }: { projectId: string }) {
         <select
           id="invite-role"
           name="role"
+          defaultValue={defaultRole}
           className="mt-1 w-full rounded-lg border border-black/15 bg-transparent px-3 py-2 text-sm outline-none focus:border-foreground dark:border-white/20 dark:bg-black"
         >
           {roleOptions.map((r) => (
