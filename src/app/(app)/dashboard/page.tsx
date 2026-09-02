@@ -62,6 +62,19 @@ export default async function DashboardPage() {
 
   const projectCount = await prisma.project.count({ where: membership });
   const publishableCount = await prisma.project.count({ where: { ...membership, canPublish: true } });
+
+  // Parcours guidé : proposé tant que les 3 gestes fondateurs ne sont pas faits.
+  // Collaborateur invité : quelqu'un qui n'a créé aucun projet mais a une
+  // approbation en attente — on l'accueille avant de le noyer dans le dashboard.
+  const [ownedCount, invitedCount] = await Promise.all([
+    prisma.project.count({ where: { ownerId: user.id } }),
+    prisma.projectContributor.count({
+      where: { project: { ownerId: user.id }, userId: { not: user.id } },
+    }),
+  ]);
+  const onboardingDone = ownedCount > 0 && invitedCount > 0 && fileCount > 0;
+  const isInvitedNewcomer = ownedCount === 0 && pendingApprovals > 0;
+  const invitedProject = isInvitedNewcomer ? projects[0] : null;
   const totalReceivedCents = declarations
     .filter((d) => d.status === "PAID")
     .reduce((s, d) => s + (d.amountReceivedCents ?? 0), 0);
@@ -101,6 +114,35 @@ export default async function DashboardPage() {
           Vue d&apos;ensemble de votre vault protégé.
         </p>
       </div>
+
+      {invitedProject && (
+        <div className="rounded-xl border border-black/20 p-5 dark:border-white/25">
+          <h2 className="font-medium">Bienvenue — on vous attend sur « {invitedProject.title} »</h2>
+          <p className="mt-1 text-sm text-black/60 dark:text-white/60">
+            Quelqu&apos;un vous a invité·e à contribuer. Il vous reste une chose à faire :
+            approuver (ou refuser) la version déposée. Vous pourrez créer vos propres projets
+            ensuite.
+          </p>
+          <Link
+            href={`/projects/${invitedProject.id}`}
+            className="mt-4 inline-block rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background"
+          >
+            Voir ce qui m&apos;attend →
+          </Link>
+        </div>
+      )}
+
+      {!onboardingDone && !invitedProject && (
+        <Link
+          href="/onboarding"
+          className="block rounded-xl border border-dashed border-black/20 p-4 text-sm hover:border-black/40 dark:border-white/25 dark:hover:border-white/50"
+        >
+          <span className="font-medium">Parcours guidé →</span>
+          <span className="ml-2 text-black/50 dark:text-white/50">
+            Trois gestes pour rendre votre vault vivant : projet, collaborateur, fichier.
+          </span>
+        </Link>
+      )}
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         {stats.map((s) => (

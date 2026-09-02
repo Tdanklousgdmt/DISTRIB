@@ -43,12 +43,19 @@ export default async function LandingPage() {
             DISTRIB sécurise vos créations dès l&apos;upload : vault immuable, preuve
             d&apos;antériorité et déclarations automatiques. Vous créez, on protège.
           </p>
-          <div className="mt-8 flex gap-3">
+          <p className="mt-3 max-w-xl text-sm text-black/50 dark:text-white/50">
+            Preuve et gestion de vos droits — pas de distribution. Votre distributeur reste le
+            vôtre.
+          </p>
+          <div className="mt-8 flex items-center gap-4">
             <Link
               href="/signin"
               className="rounded-full bg-foreground px-5 py-2.5 text-sm font-medium text-background"
             >
               Démarrer
+            </Link>
+            <Link href="/faq" className="text-sm underline">
+              Ce que DISTRIB fait (et ne fait pas)
             </Link>
           </div>
         </section>
@@ -67,8 +74,17 @@ export default async function LandingPage() {
       </main>
 
       <footer className="border-t border-black/10 dark:border-white/10">
-        <div className="mx-auto w-full max-w-5xl px-6 py-6 text-xs text-black/40 dark:text-white/40">
-          DISTRIB — protection des droits musicaux pour artistes indépendants.
+        <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center gap-x-4 gap-y-1 px-6 py-6 text-xs text-black/40 dark:text-white/40">
+          <span>DISTRIB — protection des droits musicaux pour artistes indépendants.</span>
+          <Link href="/faq" className="underline">
+            Aide
+          </Link>
+          <Link href="/cgu" className="underline">
+            CGU
+          </Link>
+          <Link href="/confidentialite" className="underline">
+            Données personnelles
+          </Link>
         </div>
       </footer>
     </div>

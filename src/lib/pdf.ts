@@ -199,6 +199,93 @@ function newLedgerPage(doc: PDFDocument): PDFPage {
   return doc.addPage(A4_LANDSCAPE);
 }
 
+/** Retour à la ligne automatique — pdf-lib ne le fait pas nativement. */
+function wrapText(font: PDFFont, text: string, size: number, maxWidth: number): string[] {
+  const words = text.split(" ");
+  const lines: string[] = [];
+  let current = "";
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (font.widthOfTextAtSize(candidate, size) <= maxWidth) {
+      current = candidate;
+    } else {
+      if (current) lines.push(current);
+      current = word;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
+}
+
+function drawParagraph(c: Cursor, font: PDFFont, text: string, size: number, maxWidth: number) {
+  for (const line of wrapText(font, text, size, maxWidth)) {
+    c.page.drawText(line, { x: MARGIN, y: c.y, size, font, color: rgb(0.2, 0.2, 0.23) });
+    c.y -= size + 4;
+  }
+  c.y -= 6;
+}
+
+// Page de cadrage du certificat — élément de crédibilité le plus critique
+// selon le cahier des charges : dire ce qui est prouvé, par qui, à quelle
+// date, comment le vérifier soi-même, et surtout ce que ça ne prouve PAS.
+function drawCertificateCover(
+  doc: PDFDocument,
+  bold: PDFFont,
+  regular: PDFFont,
+  data: LedgerPdfData,
+): void {
+  const page = doc.addPage(A4);
+  const c: Cursor = { page, y: A4[1] - 70 };
+  const width = A4[0] - 2 * MARGIN;
+
+  drawTitle(c, bold, `Certificat de preuve — ${data.projectTitle}`);
+
+  drawSection(c, bold, "Ce que ce document prouve");
+  drawParagraph(
+    c,
+    regular,
+    `Que chaque fichier listé dans le registre ci-après existait, sous une forme strictement identique, à la date et à l'heure indiquées pour sa ligne, et que son empreinte numérique a été inscrite à ce moment-là dans un registre public que DISTRIB ne contrôle pas et ne peut pas modifier. Pour les lignes « approbation finale », que l'ensemble des contributeurs déclarés sur le projet avaient approuvé cette version à cette date.`,
+    9.5,
+    width,
+  );
+
+  drawSection(c, bold, "Ce que ce document ne prouve pas");
+  drawParagraph(
+    c,
+    regular,
+    `Il ne prouve pas que le titulaire du compte est l'auteur de l'œuvre au sens du Code de la propriété intellectuelle, ni qu'il en détient les droits. Il ne constitue ni un dépôt auprès d'un organisme de gestion collective, ni un titre de propriété, ni une décision de justice. C'est une preuve d'antériorité : elle établit une date certaine, à faire valoir devant un juge ou un organisme, qui restent seuls à apprécier la paternité.`,
+    9.5,
+    width,
+  );
+
+  drawSection(c, bold, "Par qui, quand");
+  drawParagraph(
+    c,
+    regular,
+    `Chaque ligne du registre indique le compte DISTRIB à l'origine du dépôt ou de l'approbation, et la date exacte de l'inscription publique. Le présent certificat a été généré le ${data.generatedAt.toLocaleDateString("fr-FR")} ; les dates du registre sont celles de l'inscription publique, pas celles de la génération.`,
+    9.5,
+    width,
+  );
+
+  drawSection(c, bold, "Comment vérifier vous-même, sans DISTRIB");
+  drawParagraph(
+    c,
+    regular,
+    `Recalculez l'empreinte SHA-256 du fichier en votre possession (n'importe quel outil libre le fait), puis ouvrez le lien public indiqué pour la ligne correspondante : l'empreinte inscrite doit être identique. Si elle l'est, le fichier n'a pas changé d'un octet depuis la date inscrite. Cette vérification ne nécessite ni compte DISTRIB, ni confiance envers DISTRIB.`,
+    9.5,
+    width,
+  );
+
+  drawSection(c, bold, "Où est inscrite la preuve");
+  drawParagraph(
+    c,
+    regular,
+    `Registre public : Polygon ${data.network === "mainnet" ? "(réseau principal)" : "Amoy (réseau de test)"}. Contrat : ${data.contractAddress ?? "non déployé"}. Ces deux identifiants figurent sur le certificat pour qu'il reste vérifiable même si DISTRIB changeait d'infrastructure.`,
+    9.5,
+    width,
+  );
+}
+
 function drawLedgerColumnHeaders(c: Cursor, bold: PDFFont) {
   let x = MARGIN;
   for (const col of LEDGER_COLS) {
@@ -233,6 +320,8 @@ export async function buildLedgerPdf(data: LedgerPdfData): Promise<Uint8Array> {
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
   const regular = await doc.embedFont(StandardFonts.Helvetica);
   const mono = await doc.embedFont(StandardFonts.Courier);
+
+  drawCertificateCover(doc, bold, regular, data);
 
   let page = newLedgerPage(doc);
   const c: Cursor = { page, y: A4_LANDSCAPE[1] - 60 };

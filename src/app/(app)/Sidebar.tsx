@@ -15,13 +15,29 @@ const ICONS: Record<string, React.ReactNode> = {
   notifications: <path d="M6 8a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6M10 20a2 2 0 0 0 4 0" />,
 };
 
-const NAV = [
-  { href: "/dashboard", label: "Tableau de bord", icon: "dashboard" },
-  { href: "/projects", label: "Mes projets", icon: "projects" },
-  { href: "/vault", label: "Vault", icon: "vault" },
-  { href: "/concerts", label: "Concerts", icon: "concerts" },
-  { href: "/revenus", label: "Revenus", icon: "revenus" },
-  { href: "/claims", label: "Réclamations", icon: "claims" },
+// Navigation en deux sections, comme le prototype d'origine et le cahier des
+// charges : « Création » (ce que je produis) / « Perception des droits » (ce
+// que ça me rapporte et ce qui le menace).
+const NAV_SECTIONS: Array<{
+  label: string | null;
+  items: Array<{ href: string; label: string; icon: string }>;
+}> = [
+  { label: null, items: [{ href: "/dashboard", label: "Tableau de bord", icon: "dashboard" }] },
+  {
+    label: "Création",
+    items: [
+      { href: "/projects", label: "Mes projets", icon: "projects" },
+      { href: "/vault", label: "Vault", icon: "vault" },
+    ],
+  },
+  {
+    label: "Perception des droits",
+    items: [
+      { href: "/concerts", label: "Concerts", icon: "concerts" },
+      { href: "/revenus", label: "Revenus", icon: "revenus" },
+      { href: "/claims", label: "Réclamations", icon: "claims" },
+    ],
+  },
 ];
 
 const AVATAR_COLORS = ["#4B4E8F", "#3F7A5E", "#8F5A3F", "#5A5A8F", "#3F7A8F", "#8F3F5A"];
@@ -92,32 +108,44 @@ export function Sidebar({
       </Link>
 
       <nav className="flex gap-1 overflow-x-auto text-[13.5px] md:flex-col md:overflow-visible">
-        {NAV.map((item) => {
-          const active = isActive(item.href);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="relative flex shrink-0 items-center gap-3 whitespace-nowrap rounded-[8px] px-[10px] py-2 font-medium transition-colors"
-              style={{ color: active ? "var(--ink)" : "var(--muted)" }}
-              onMouseEnter={(e) => {
-                if (!active) e.currentTarget.style.background = "var(--surface-2)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "transparent";
-              }}
-            >
-              {active && (
-                <span
-                  className="absolute top-[7px] bottom-[7px] hidden w-[2px] rounded-r-full md:block"
-                  style={{ left: "-16px", background: "var(--accent)" }}
-                />
-              )}
-              <Icon name={item.icon} />
-              {item.label}
-            </Link>
-          );
-        })}
+        {NAV_SECTIONS.map((section, si) => (
+          <div key={si} className="contents md:block">
+            {section.label && (
+              <div
+                className="hidden px-[10px] pt-4 pb-1.5 font-mono text-[10px] font-medium uppercase tracking-[.16em] md:block"
+                style={{ color: "var(--faint)" }}
+              >
+                {section.label}
+              </div>
+            )}
+            {section.items.map((item) => {
+              const active = isActive(item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className="relative flex shrink-0 items-center gap-3 whitespace-nowrap rounded-[8px] px-[10px] py-2 font-medium transition-colors"
+                  style={{ color: active ? "var(--ink)" : "var(--muted)" }}
+                  onMouseEnter={(e) => {
+                    if (!active) e.currentTarget.style.background = "var(--surface-2)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "transparent";
+                  }}
+                >
+                  {active && (
+                    <span
+                      className="absolute top-[7px] bottom-[7px] hidden w-[2px] rounded-r-full md:block"
+                      style={{ left: "-16px", background: "var(--accent)" }}
+                    />
+                  )}
+                  <Icon name={item.icon} />
+                  {item.label}
+                </Link>
+              );
+            })}
+          </div>
+        ))}
         <Link
           href="/notifications"
           className="relative flex shrink-0 items-center gap-3 whitespace-nowrap rounded-[8px] px-[10px] py-2 font-medium transition-colors"
@@ -147,6 +175,15 @@ export function Sidebar({
           )}
         </Link>
       </nav>
+
+      <div className="mt-2 hidden gap-3 px-[10px] font-mono text-[11px] md:flex" style={{ color: "var(--faint)" }}>
+        <Link href="/onboarding" className="hover:underline">
+          Parcours guidé
+        </Link>
+        <Link href="/faq" className="hover:underline">
+          Aide
+        </Link>
+      </div>
 
       <div
         className="mt-3 flex items-center gap-2.5 border-t pt-3 md:mt-auto md:pt-4"
