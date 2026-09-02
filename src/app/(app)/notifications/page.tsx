@@ -15,6 +15,10 @@ const typeLabels: Record<string, string> = {
   CONCERT_REMINDER_J1: "Concert demain",
   SACEM_SIGNED: "Déclaration SACEM signée",
   PAYMENT_RECEIVED: "Paiement reçu",
+  SPLIT_SIGNED: "Répartition signée",
+  SPLIT_INVALIDATED: "Signature de répartition invalidée",
+  PENDING_REMINDER: "Rappel — action en attente",
+  MONTHLY_DIGEST: "Récapitulatif mensuel",
 };
 
 function describe(type: string, payload: unknown): string {
@@ -34,6 +38,22 @@ function describe(type: string, payload: unknown): string {
         : "Votre version a été approuvée.";
     case "VERSION_REJECTED":
       return title ? `Version ${vn ?? ""} de « ${title} » rejetée.` : "Votre version a été rejetée.";
+    case "SPLIT_INVALIDATED":
+      return title
+        ? `La répartition de « ${title} » a changé — votre signature n'est plus valable.`
+        : "Une répartition que vous aviez signée a changé.";
+    case "PENDING_REMINDER":
+      return title
+        ? `Une action est toujours en attente sur « ${title} ».`
+        : (typeof p.label === "string" ? p.label : null)
+          ? `Une action est toujours en attente (${p.label}).`
+          : "Une action est toujours en attente.";
+    case "MONTHLY_DIGEST": {
+      const pa = typeof p.pendingApprovals === "number" ? p.pendingApprovals : 0;
+      const us = typeof p.unsignedSplits === "number" ? p.unsignedSplits : 0;
+      const uc = typeof p.upcomingConcerts === "number" ? p.upcomingConcerts : 0;
+      return `Ce mois-ci : ${pa} approbation${pa > 1 ? "s" : ""}, ${us} signature${us > 1 ? "s" : ""} et ${uc} concert${uc > 1 ? "s" : ""} à venir.`;
+    }
     default:
       return typeLabels[type] ?? type;
   }
