@@ -73,7 +73,7 @@ export function UploadForm({ versionId }: { versionId: string }) {
           disabled={status === "uploading"}
           className="rounded-full border border-black/15 px-3 py-1.5 text-xs font-medium hover:bg-black/5 disabled:opacity-50 dark:border-white/20 dark:hover:bg-white/10"
         >
-          {status === "uploading" ? "Protection…" : "Déposer & protéger"}
+          {status === "uploading" ? "Ajout…" : "Ajouter un fichier à ce dépôt"}
         </button>
         {message && (
           <span className={"text-xs " + (status === "error" ? "text-red-600" : "text-green-600")}>

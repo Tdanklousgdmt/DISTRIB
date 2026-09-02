@@ -143,7 +143,9 @@ export default async function ProjectDetailPage({
 
           {project.versions.length === 0 ? (
             <p className="rounded-xl border border-dashed border-black/15 p-6 text-sm text-black/60 dark:border-white/15 dark:text-white/60">
-              Aucune version. Créez la première pour commencer à déposer des fichiers.
+              Aucun dépôt pour l&apos;instant. Déposez un premier fichier avec votre commentaire :
+              il est horodaté immédiatement, puis attend l&apos;approbation des autres
+              contributeurs.
             </p>
           ) : (
             <ul className="space-y-4">
@@ -355,7 +357,7 @@ export default async function ProjectDetailPage({
         <aside className="space-y-6">
           <div>
             <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-black/50 dark:text-white/50">
-              Nouvelle version
+              Nouveau dépôt
             </h2>
             <div className="rounded-xl border border-black/10 p-4 dark:border-white/10">
               <NewVersionForm projectId={project.id} />
