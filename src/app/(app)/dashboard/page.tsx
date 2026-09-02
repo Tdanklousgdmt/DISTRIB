@@ -27,6 +27,13 @@ const declarationLabel: Record<string, string> = {
   PAID: "Payée",
 };
 
+const declarationTypeLabel: Record<string, string> = {
+  OEUVRE: "Œuvre",
+  LIVE: "Live",
+  ADAMI_ATTESTATION: "Attestation ADAMI",
+  SPEDIDAM_PRESENCE: "Présence SPEDIDAM",
+};
+
 export default async function DashboardPage() {
   const user = await requireUser();
   const membership = {
@@ -243,11 +250,12 @@ export default async function DashboardPage() {
             {declarations.map((d) => (
               <li key={d.id} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
                 <span className="min-w-0 truncate">
-                  {d.type === "OEUVRE"
-                    ? `Œuvre — ${d.project?.title ?? "?"}${
-                        d.version ? ` (v${d.version.versionNumber})` : ""
-                      }`
-                    : `Live — ${d.concert?.venue ?? "?"}${d.concert?.city ? `, ${d.concert.city}` : ""}`}
+                  {declarationTypeLabel[d.type] ?? d.type} —{" "}
+                  {d.project
+                    ? `${d.project.title}${d.version ? ` (v${d.version.versionNumber})` : ""}`
+                    : d.concert
+                      ? `${d.concert.venue}${d.concert.city ? `, ${d.concert.city}` : ""}`
+                      : "?"}
                 </span>
                 <span className="flex shrink-0 items-center gap-2">
                   {d.amountReceivedCents != null && (
