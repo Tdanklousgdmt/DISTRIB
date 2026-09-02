@@ -1,6 +1,7 @@
 import {
   S3Client,
   PutObjectCommand,
+  GetObjectCommand,
   ObjectLockMode,
   ObjectLockLegalHoldStatus,
 } from "@aws-sdk/client-s3";
@@ -86,6 +87,15 @@ export async function putVaultObject(params: {
     versionId: result.VersionId,
     retainUntil: until,
   };
+}
+
+/** Relit un objet du vault (lecture seule — jamais de suppression). */
+export async function getVaultObject(key: string): Promise<Uint8Array> {
+  const bucket = requireEnv("S3_BUCKET_VAULT");
+  const result = await getClient().send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+  const bytes = await result.Body?.transformToByteArray();
+  if (!bytes) throw new Error("Objet vault introuvable ou vide.");
+  return bytes;
 }
 
 /** Clé S3 déterministe pour un fichier de vault : <projet>/<version>/<hash>-<nom>. */

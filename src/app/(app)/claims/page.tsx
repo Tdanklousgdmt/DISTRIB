@@ -114,6 +114,12 @@ export default async function ClaimsPage() {
                       >
                         {c.targetFile.version.project.title}
                       </Link>
+                      <audio
+                        controls
+                        preload="none"
+                        src={`/api/vault-files/${c.targetFile.id}/audio`}
+                        className="mt-2 h-8 w-full"
+                      />
                     </div>
                     <div className="rounded-lg bg-black/[.03] p-3 dark:bg-white/[.04]">
                       <div className="text-xs text-black/50 dark:text-white/50">
@@ -128,8 +134,18 @@ export default async function ClaimsPage() {
                       >
                         {c.claimantFile.version.project.title}
                       </Link>
+                      <audio
+                        controls
+                        preload="none"
+                        src={`/api/vault-files/${c.claimantFile.id}/audio`}
+                        className="mt-2 h-8 w-full"
+                      />
                     </div>
                   </div>
+                  <p className="mt-2 text-[11px] text-black/40 dark:text-white/40">
+                    Écoute comparative — utile pour juger d&apos;une similarité, ne remplace pas la
+                    preuve d&apos;antériorité (le hash horodaté fait foi).
+                  </p>
 
                   {c.resolutionNote && (
                     <p className="mt-2 text-xs italic text-black/50 dark:text-white/50">

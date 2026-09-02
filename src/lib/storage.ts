@@ -1,10 +1,10 @@
 import "server-only";
 
-import { chmod, mkdir, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 
 import { optionalEnv, s3Configured } from "@/lib/env";
-import { putVaultObject, vaultKey, type StoredObject } from "@/lib/s3";
+import { putVaultObject, getVaultObject, vaultKey, type StoredObject } from "@/lib/s3";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Abstraction du stockage vault — deux drivers :
@@ -64,6 +64,22 @@ export async function storeVaultObject(params: {
   retainUntil.setFullYear(retainUntil.getFullYear() + years);
 
   return { bucket: "local", key: params.key, versionId: undefined, retainUntil };
+}
+
+/**
+ * Relit un objet du vault via le driver actif — utilisé pour la comparaison
+ * audio des réclamations (jamais pour un export/téléchargement en masse).
+ */
+export async function readVaultObject(key: string): Promise<Buffer> {
+  if (storageDriver() === "s3") {
+    return Buffer.from(await getVaultObject(key));
+  }
+  const root = localVaultDir();
+  const path = resolve(join(root, key));
+  if (!path.startsWith(root + sep)) {
+    throw new Error("Clé de vault invalide (échappement de répertoire).");
+  }
+  return readFile(path);
 }
 
 export { vaultKey };
