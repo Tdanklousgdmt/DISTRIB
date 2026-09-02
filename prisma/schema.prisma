@@ -66,6 +66,8 @@ enum ConcertStatus {
 enum SacemDeclarationType {
   OEUVRE
   LIVE
+  ADAMI_ATTESTATION
+  SPEDIDAM_PRESENCE
 }
 
 enum SacemDeclarationStatus {
@@ -100,6 +102,20 @@ enum NotificationType {
   CONCERT_REMINDER_J1
   SACEM_SIGNED
   PAYMENT_RECEIVED
+  SPLIT_SIGNED
+  SPLIT_INVALIDATED
+  PENDING_REMINDER
+  MONTHLY_DIGEST
+}
+
+// Les 5 catégories de divulgation IA générative du format DDEX — déclarées à
+// chaque dépôt (art. 50 AI Act, applicable depuis le 2 août 2026).
+enum AiDisclosureCategory {
+  VOIX
+  INSTRUMENTATION
+  COMPOSITION
+  POST_PRODUCTION
+  PAROLES
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -119,6 +135,10 @@ model User {
   // (auteur + interprète + producteur). Voir doc section 07.
   profileFlags UserProfileFlag[]
 
+  // Identifiant IPI (auteur/interprète) — requis par la checklist de
+  // déclaration SACEM, saisi par l'utilisateur lui-même sur sa fiche.
+  ipiCode String?
+
   // NextAuth relations
   accounts Account[]
   sessions Session[]
@@ -130,6 +150,7 @@ model User {
   createdVersions Version[]            @relation("VersionCreator")
   givenApprovals  Approval[]
   ownedConcerts   Concert[]
+  concertPrograms ConcertProgram[]
   notifications   Notification[]
 }
 
@@ -233,6 +254,9 @@ model Version {
   status          VersionStatus @default(PENDING)
   isCurrent       Boolean       @default(false)
 
+  // Durée déclarée de l'œuvre — requise par la checklist de déclaration SACEM.
+  durationSeconds Int?
+
   // Hash on-chain au dépôt (preuve d'antériorité), puis tx finale après unanimité
   initialPolygonTxHash String?
   finalPolygonTxHash   String?
@@ -270,6 +294,10 @@ model VaultFile {
   sha256Hash            String    @unique
   polygonTxHash         String?
   fingerprintComputedAt DateTime?
+
+  // Divulgation IA générative (art. 50 AI Act) — déclarée par l'utilisateur au
+  // moment du dépôt, tableau vide = aucune part IA déclarée.
+  aiCategories AiDisclosureCategory[]
 
   uploadedById String
   uploadedAt   DateTime @default(now())
@@ -361,6 +389,7 @@ model Split {
 model Concert {
   id                String        @id @default(cuid())
   projectId         String?
+  programId         String?
   artistUserId      String
   date              DateTime
   venue             String
@@ -369,6 +398,10 @@ model Concert {
   estimatedAudience Int?
   actualAudience    Int?
   setlist           Json?
+  // Musiciens présents sur scène — [{ name, role }] — utilisé pour la feuille
+  // de présence SPEDIDAM quand le concert n'est pas lié à un projet (donc pas
+  // de ProjectContributor à partir duquel dériver la liste).
+  performers        Json?
   status            ConcertStatus @default(SCHEDULED)
   sacemReference    String?
 
@@ -381,11 +414,28 @@ model Concert {
   updatedAt DateTime @updatedAt
 
   project     Project?          @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  program     ConcertProgram?   @relation(fields: [programId], references: [id], onDelete: Restrict)
   artist      User              @relation(fields: [artistUserId], references: [id], onDelete: Restrict)
   declaration SacemDeclaration?
 
   @@index([artistUserId, date])
   @@index([date, status])
+}
+
+// Programme-type réutilisable : déposé une fois, sa référence pré-remplit la
+// déclaration de l'organisateur à chaque date suivante qui le réutilise.
+model ConcertProgram {
+  id           String   @id @default(cuid())
+  artistUserId String
+  name         String
+  reference    String   @unique @default(cuid())
+  setlist      Json?
+  createdAt    DateTime @default(now())
+
+  artist   User      @relation(fields: [artistUserId], references: [id], onDelete: Restrict)
+  concerts Concert[]
+
+  @@index([artistUserId])
 }
 
 model SacemDeclaration {
