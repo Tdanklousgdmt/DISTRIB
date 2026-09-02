@@ -9,6 +9,13 @@ const statusLabels: Record<string, string> = {
   PAID: "Payée",
 };
 
+const typeLabels: Record<string, string> = {
+  OEUVRE: "Œuvre",
+  LIVE: "Live",
+  ADAMI_ATTESTATION: "Attestation ADAMI",
+  SPEDIDAM_PRESENCE: "Présence SPEDIDAM",
+};
+
 function euros(cents: number | null): string {
   return cents == null
     ? "—"
@@ -82,13 +89,14 @@ export default async function RevenusPage() {
             <li key={d.id} className="space-y-2 px-4 py-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="min-w-0 text-sm font-medium">
-                  {d.type === "OEUVRE"
-                    ? `Œuvre — ${d.project?.title ?? "?"}${
-                        d.version ? ` (v${d.version.versionNumber})` : ""
-                      }`
-                    : `Live — ${d.concert?.venue ?? "?"}${
-                        d.concert?.city ? `, ${d.concert.city}` : ""
-                      } le ${d.concert?.date.toLocaleDateString("fr-FR") ?? "?"}`}
+                  {typeLabels[d.type] ?? d.type} —{" "}
+                  {d.project
+                    ? `${d.project.title}${d.version ? ` (v${d.version.versionNumber})` : ""}`
+                    : d.concert
+                      ? `${d.concert.venue ?? "?"}${d.concert.city ? `, ${d.concert.city}` : ""} le ${
+                          d.concert.date.toLocaleDateString("fr-FR")
+                        }`
+                      : "?"}
                 </div>
                 <div className="flex items-center gap-2">
                   {d.amountReceivedCents != null && (

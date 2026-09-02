@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { NewConcertForm } from "./NewConcertForm";
 import { DeclareLiveButton } from "./DeclareLiveButton";
+import { DeclareSpedidamForm } from "./DeclareSpedidamForm";
 
 const statusLabels: Record<string, { label: string; cls: string }> = {
   SCHEDULED: {
@@ -18,11 +19,15 @@ const statusLabels: Record<string, { label: string; cls: string }> = {
 export default async function ConcertsPage() {
   const user = await requireUser();
 
-  const [concerts, projects] = await Promise.all([
+  const [concerts, projects, programs] = await Promise.all([
     prisma.concert.findMany({
       where: { artistUserId: user.id },
       orderBy: { date: "desc" },
-      include: { project: { select: { title: true } }, declaration: true },
+      include: {
+        project: { select: { title: true } },
+        declarations: true,
+        program: { select: { name: true, reference: true } },
+      },
     }),
     prisma.project.findMany({
       where: {
@@ -30,6 +35,11 @@ export default async function ConcertsPage() {
       },
       select: { id: true, title: true },
       orderBy: { title: "asc" },
+    }),
+    prisma.concertProgram.findMany({
+      where: { artistUserId: user.id },
+      select: { id: true, name: true, reference: true },
+      orderBy: { name: "asc" },
     }),
   ]);
 
@@ -57,6 +67,10 @@ export default async function ConcertsPage() {
               const status = statusLabels[c.status] ?? statusLabels.SCHEDULED;
               const isPast = c.date < now;
               const setlist = Array.isArray(c.setlist) ? (c.setlist as unknown[]) : [];
+              const liveDeclaration = c.declarations.find((d) => d.type === "LIVE");
+              const spedidamDeclaration = c.declarations.find(
+                (d) => d.type === "SPEDIDAM_PRESENCE",
+              );
               return (
                 <li
                   key={c.id}
@@ -81,14 +95,15 @@ export default async function ConcertsPage() {
                     {c.project?.title ? `Projet : ${c.project.title} · ` : ""}
                     {setlist.length} titre{setlist.length > 1 ? "s" : ""} à la setlist
                     {c.estimatedAudience ? ` · jauge ~${c.estimatedAudience}` : ""}
+                    {c.program && ` · programme « ${c.program.name} » (réf. ${c.program.reference})`}
                   </p>
                   <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-black/10 pt-3 dark:border-white/10">
-                    {c.declaration ? (
+                    {liveDeclaration ? (
                       <a
-                        href={`/api/declarations/${c.declaration.id}/pdf`}
+                        href={`/api/declarations/${liveDeclaration.id}/pdf`}
                         className="rounded-full border border-black/15 px-3 py-1 text-xs font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
                       >
-                        Télécharger le bulletin PDF
+                        Bulletin SACEM PDF
                       </a>
                     ) : isPast || daysUntil(c.date, now) <= 30 ? (
                       <DeclareLiveButton concertId={c.id} />
@@ -96,6 +111,16 @@ export default async function ConcertsPage() {
                       <span className="text-xs text-black/40 dark:text-white/40">
                         Déclarable à partir de J-30
                       </span>
+                    )}
+                    {spedidamDeclaration ? (
+                      <a
+                        href={`/api/declarations/${spedidamDeclaration.id}/pdf`}
+                        className="rounded-full border border-black/15 px-3 py-1 text-xs font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
+                      >
+                        Feuille SPEDIDAM — PDF
+                      </a>
+                    ) : (
+                      <DeclareSpedidamForm concertId={c.id} />
                     )}
                   </div>
                 </li>
@@ -110,7 +135,7 @@ export default async function ConcertsPage() {
           Nouveau concert
         </h2>
         <div className="rounded-xl border border-black/10 p-4 dark:border-white/10">
-          <NewConcertForm projects={projects} />
+          <NewConcertForm projects={projects} programs={programs} />
         </div>
       </aside>
     </div>

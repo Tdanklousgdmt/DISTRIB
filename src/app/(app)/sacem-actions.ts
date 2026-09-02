@@ -32,6 +32,8 @@ export async function createConcertAction(
     estimatedAudience: formData.get("estimatedAudience") || undefined,
     setlist: formData.get("setlist") ?? "",
     projectId: formData.get("projectId") ?? "",
+    programId: formData.get("programId") ?? "",
+    saveAsProgram: formData.get("saveAsProgram") ?? "",
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Données invalides." };
@@ -51,16 +53,37 @@ export async function createConcertAction(
     if (!member) return { error: "Projet introuvable ou accès refusé." };
   }
 
+  // Programme-type réutilisable : soit on rattache un programme existant (et
+  // sa setlist pré-remplit la date si aucune setlist saisie ici), soit on
+  // enregistre cette setlist comme nouveau programme réutilisable.
+  let programId = data.programId ?? null;
+  let setlist = data.setlist;
+  if (programId) {
+    const program = await prisma.concertProgram.findUnique({ where: { id: programId } });
+    if (!program || program.artistUserId !== user.id) {
+      return { error: "Programme introuvable." };
+    }
+    if (setlist.length === 0 && Array.isArray(program.setlist)) {
+      setlist = program.setlist as string[];
+    }
+  } else if (data.saveAsProgram) {
+    const program = await prisma.concertProgram.create({
+      data: { artistUserId: user.id, name: data.saveAsProgram, setlist },
+    });
+    programId = program.id;
+  }
+
   await prisma.concert.create({
     data: {
       artistUserId: user.id,
       projectId: data.projectId ?? null,
+      programId,
       date: data.date,
       venue: data.venue,
       city: data.city ?? null,
       country: data.country ?? null,
       estimatedAudience: data.estimatedAudience ?? null,
-      setlist: data.setlist,
+      setlist,
     },
   });
 
@@ -81,11 +104,13 @@ export async function declareLiveAction(
 
   const concert = await prisma.concert.findUnique({
     where: { id: concertId },
-    include: { declaration: true, artist: true },
+    include: { declarations: true, artist: true },
   });
   if (!concert) return { error: "Concert introuvable." };
   if (concert.artistUserId !== user.id) return { error: "Accès refusé." };
-  if (concert.declaration) return { error: "Ce concert est déjà déclaré." };
+  if (concert.declarations.some((d) => d.type === "LIVE")) {
+    return { error: "Ce concert est déjà déclaré." };
+  }
 
   const declaration = await prisma.sacemDeclaration.create({
     data: {
@@ -182,6 +207,99 @@ export async function declareOeuvreAction(
 
   revalidatePath(`/projects/${version.projectId}`);
   revalidatePath("/revenus");
+  return undefined;
+}
+
+/**
+ * Attestation ADAMI (participation à l'enregistrement) — dérivée des
+ * contributeurs d'une version approuvée à l'unanimité, comme les
+ * déclarations SACEM. Une seule attestation par version.
+ */
+export async function declareAdamiAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const user = await requireUser();
+  const versionId = String(formData.get("versionId") ?? "");
+
+  const version = await prisma.version.findUnique({
+    where: { id: versionId },
+    include: {
+      project: { include: { contributors: { select: { userId: true } } } },
+      declarations: { where: { type: "ADAMI_ATTESTATION" } },
+    },
+  });
+  if (!version) return { error: "Version introuvable." };
+
+  const member =
+    version.project.ownerId === user.id ||
+    version.project.contributors.some((c) => c.userId === user.id);
+  if (!member) return { error: "Accès refusé." };
+  if (version.status !== "APPROVED") {
+    return { error: "Seule une version approuvée à l'unanimité peut donner lieu à une attestation." };
+  }
+  if (version.declarations.length > 0) {
+    return { error: "Une attestation ADAMI existe déjà pour cette version." };
+  }
+
+  await prisma.sacemDeclaration.create({
+    data: {
+      type: "ADAMI_ATTESTATION",
+      projectId: version.projectId,
+      versionId: version.id,
+      status: "PENDING_SIGNATURE",
+    },
+  });
+
+  revalidatePath(`/projects/${version.projectId}`);
+  return undefined;
+}
+
+/**
+ * Feuille de présence SPEDIDAM pour un concert — la liste des musiciens
+ * présents est saisie ici (une ligne "Nom - Rôle") et conservée sur le
+ * concert pour les dates suivantes qui réutilisent le même programme.
+ */
+export async function declareSpedidamAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const user = await requireUser();
+  const concertId = String(formData.get("concertId") ?? "");
+  const performersRaw = String(formData.get("performers") ?? "");
+
+  const performers = performersRaw
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 50)
+    .map((line) => {
+      const [name, ...rest] = line.split("-").map((s) => s.trim());
+      return { name: name || line, role: rest.join("-") || "Musicien" };
+    });
+
+  const concert = await prisma.concert.findUnique({
+    where: { id: concertId },
+    include: { declarations: true },
+  });
+  if (!concert) return { error: "Concert introuvable." };
+  if (concert.artistUserId !== user.id) return { error: "Accès refusé." };
+  if (concert.declarations.some((d) => d.type === "SPEDIDAM_PRESENCE")) {
+    return { error: "Une feuille de présence existe déjà pour ce concert." };
+  }
+
+  await prisma.$transaction([
+    prisma.concert.update({ where: { id: concertId }, data: { performers } }),
+    prisma.sacemDeclaration.create({
+      data: {
+        type: "SPEDIDAM_PRESENCE",
+        concertId,
+        status: "PENDING_SIGNATURE",
+      },
+    }),
+  ]);
+
+  revalidatePath("/concerts");
   return undefined;
 }
 

@@ -1,7 +1,14 @@
 import "server-only";
 
 import { prisma } from "@/lib/prisma";
-import { buildLivePdf, buildOeuvrePdf } from "@/lib/pdf";
+import { buildAdamiPdf, buildLivePdf, buildOeuvrePdf, buildSpedidamPdf } from "@/lib/pdf";
+
+const roleLabels: Record<string, string> = {
+  ARTIST: "Artiste",
+  CO_AUTHOR: "Co-auteur",
+  BEATMAKER: "Beatmaker",
+  CO_BEATMAKER: "Co-beatmaker",
+};
 
 // Construit le PDF d'une déclaration depuis la BDD (à la volée — pas besoin
 // de S3 pour télécharger un bulletin, le stockage n'est qu'un cache).
@@ -12,7 +19,9 @@ export async function renderDeclarationPdf(declarationId: string): Promise<{
   const declaration = await prisma.sacemDeclaration.findUnique({
     where: { id: declarationId },
     include: {
-      project: true,
+      project: {
+        include: { contributors: { include: { user: { select: { name: true, email: true } } } } },
+      },
       version: {
         include: {
           files: { select: { filename: true, sha256Hash: true } },
@@ -62,6 +71,38 @@ export async function renderDeclarationPdf(declarationId: string): Promise<{
     });
     const day = concert.date.toISOString().slice(0, 10);
     return { bytes, filename: `sacem-live-${day}.pdf` };
+  }
+
+  if (declaration.type === "ADAMI_ATTESTATION" && declaration.version && declaration.project) {
+    const v = declaration.version;
+    const bytes = await buildAdamiPdf({
+      projectTitle: declaration.project.title,
+      versionNumber: v.versionNumber,
+      finalizedAt: v.finalizedAt,
+      performers: declaration.project.contributors.map((c) => ({
+        name: c.user.name ?? c.user.email,
+        role: roleLabels[c.role] ?? c.role,
+      })),
+      generatedAt: new Date(),
+    });
+    const slug = declaration.project.title.replace(/[^\w-]+/g, "_").slice(0, 60);
+    return { bytes, filename: `adami-attestation-${slug}-v${v.versionNumber}.pdf` };
+  }
+
+  if (declaration.type === "SPEDIDAM_PRESENCE" && declaration.concert) {
+    const concert = declaration.concert;
+    const performers = Array.isArray(concert.performers)
+      ? (concert.performers as unknown as Array<{ name: string; role: string }>)
+      : [];
+    const bytes = await buildSpedidamPdf({
+      venue: concert.venue,
+      date: concert.date,
+      city: concert.city,
+      performers,
+      generatedAt: new Date(),
+    });
+    const day = concert.date.toISOString().slice(0, 10);
+    return { bytes, filename: `spedidam-presence-${day}.pdf` };
   }
 
   return null;

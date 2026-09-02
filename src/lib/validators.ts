@@ -116,6 +116,8 @@ export const createConcertSchema = z.object({
     )
     .pipe(z.array(z.string().max(200))),
   projectId: z.string().min(1).optional().or(z.literal("").transform(() => undefined)),
+  programId: z.string().min(1).optional().or(z.literal("").transform(() => undefined)),
+  saveAsProgram: z.string().trim().max(200).optional().or(z.literal("").transform(() => undefined)),
 });
 export type CreateConcertInput = z.infer<typeof createConcertSchema>;
 

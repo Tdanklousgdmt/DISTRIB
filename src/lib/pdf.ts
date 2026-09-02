@@ -415,3 +415,90 @@ export async function buildLivePdf(data: LiveDeclarationData): Promise<Uint8Arra
   drawFooter(page, regular, data.generatedAt);
   return doc.save();
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Attestations ADAMI (participation à l'enregistrement) et feuilles de
+// présence SPEDIDAM (musiciens présents en live) — générées depuis les
+// contributions validées du vault, sans dépôt automatique (pas d'API ouverte).
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface AdamiAttestationData {
+  projectTitle: string;
+  versionNumber: number;
+  finalizedAt: Date | null;
+  performers: Array<{ name: string; role: string }>;
+  generatedAt: Date;
+}
+
+/** Attestation de participation ADAMI (interprètes d'un enregistrement). */
+export async function buildAdamiPdf(data: AdamiAttestationData): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage(A4);
+  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const regular = await doc.embedFont(StandardFonts.Helvetica);
+  const c: Cursor = { page, y: A4[1] - 70 };
+
+  drawTitle(c, bold, "Attestation de participation — ADAMI");
+
+  drawSection(c, bold, "Enregistrement");
+  drawField(c, bold, regular, "Titre", data.projectTitle);
+  drawField(c, bold, regular, "Version déclarée", `Version ${data.versionNumber}`);
+  drawField(
+    c,
+    bold,
+    regular,
+    "Enregistré le",
+    data.finalizedAt ? data.finalizedAt.toLocaleDateString("fr-FR") : "—",
+  );
+
+  drawSection(c, bold, "Interprètes ayant participé");
+  for (const p of data.performers) {
+    drawField(c, bold, regular, p.name, p.role);
+  }
+
+  drawSection(c, bold, "Signature");
+  drawField(c, bold, regular, "Fait le", data.generatedAt.toLocaleDateString("fr-FR"));
+  drawField(c, bold, regular, "Signature de l'interprète", " ");
+
+  drawFooter(page, regular, data.generatedAt);
+  return doc.save();
+}
+
+export interface SpedidamPresenceData {
+  venue: string;
+  date: Date;
+  city: string | null;
+  performers: Array<{ name: string; role: string }>;
+  generatedAt: Date;
+}
+
+/** Feuille de présence SPEDIDAM (musiciens présents lors d'une date live). */
+export async function buildSpedidamPdf(data: SpedidamPresenceData): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage(A4);
+  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const regular = await doc.embedFont(StandardFonts.Helvetica);
+  const c: Cursor = { page, y: A4[1] - 70 };
+
+  drawTitle(c, bold, "Feuille de présence — SPEDIDAM");
+
+  drawSection(c, bold, "Représentation");
+  drawField(c, bold, regular, "Lieu", data.venue);
+  drawField(c, bold, regular, "Ville", data.city ?? "—");
+  drawField(c, bold, regular, "Date", data.date.toLocaleDateString("fr-FR"));
+
+  drawSection(c, bold, "Musiciens présents");
+  if (data.performers.length === 0) {
+    drawField(c, bold, regular, "Présence", "Non renseignée");
+  }
+  for (const p of data.performers) {
+    drawField(c, bold, regular, p.name, p.role);
+  }
+
+  drawSection(c, bold, "Signature");
+  drawField(c, bold, regular, "Fait le", data.generatedAt.toLocaleDateString("fr-FR"));
+  drawField(c, bold, regular, "Signature du responsable de plateau", " ");
+
+  drawFooter(page, regular, data.generatedAt);
+  return doc.save();
+}

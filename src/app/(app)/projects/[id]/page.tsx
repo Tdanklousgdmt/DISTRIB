@@ -10,6 +10,7 @@ import { ApprovalDecision } from "./ApprovalDecision";
 import { SplitsEditor } from "./SplitsEditor";
 import { SplitSignButton } from "./SplitSignButton";
 import { DeclareOeuvreButton } from "./DeclareOeuvreButton";
+import { DeclareAdamiButton } from "./DeclareAdamiButton";
 import { buildProjectLedger } from "@/lib/ledger";
 import { formatBytes, formatDuration } from "@/lib/format";
 import { aiDisclosureLabels } from "@/lib/validators";
@@ -61,7 +62,10 @@ export default async function ProjectDetailPage({
             include: { reviewer: { select: { email: true, name: true } } },
           },
           splits: true,
-          declarations: { where: { type: "OEUVRE" }, select: { id: true } },
+          declarations: {
+            where: { type: { in: ["OEUVRE", "ADAMI_ATTESTATION"] } },
+            select: { id: true, type: true },
+          },
         },
       },
     },
@@ -257,16 +261,26 @@ export default async function ProjectDetailPage({
 
                     {/* Déclaration SACEM (version approuvée avec splits) */}
                     {v.status === "APPROVED" && v.splits.length > 0 && (
-                      <div className="mt-3 border-t border-black/10 pt-3 dark:border-white/10">
-                        {v.declarations.length > 0 ? (
+                      <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-black/10 pt-3 dark:border-white/10">
+                        {v.declarations.find((d) => d.type === "OEUVRE") ? (
                           <a
-                            href={`/api/declarations/${v.declarations[0].id}/pdf`}
+                            href={`/api/declarations/${v.declarations.find((d) => d.type === "OEUVRE")!.id}/pdf`}
                             className="text-xs underline"
                           >
                             Œuvre déclarée — bulletin PDF
                           </a>
                         ) : (
                           <DeclareOeuvreButton versionId={v.id} />
+                        )}
+                        {v.declarations.find((d) => d.type === "ADAMI_ATTESTATION") ? (
+                          <a
+                            href={`/api/declarations/${v.declarations.find((d) => d.type === "ADAMI_ATTESTATION")!.id}/pdf`}
+                            className="text-xs underline"
+                          >
+                            Attestation ADAMI PDF
+                          </a>
+                        ) : (
+                          <DeclareAdamiButton versionId={v.id} />
                         )}
                       </div>
                     )}

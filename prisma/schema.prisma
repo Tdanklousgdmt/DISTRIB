@@ -413,10 +413,12 @@ model Concert {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  project     Project?          @relation(fields: [projectId], references: [id], onDelete: Restrict)
-  program     ConcertProgram?   @relation(fields: [programId], references: [id], onDelete: Restrict)
-  artist      User              @relation(fields: [artistUserId], references: [id], onDelete: Restrict)
-  declaration SacemDeclaration?
+  project      Project?           @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  program      ConcertProgram?    @relation(fields: [programId], references: [id], onDelete: Restrict)
+  artist       User               @relation(fields: [artistUserId], references: [id], onDelete: Restrict)
+  // Un concert peut porter DEUX déclarations distinctes : LIVE (SACEM) et
+  // SPEDIDAM_PRESENCE (musiciens) — d'où une relation 1-N, pas 1-1.
+  declarations SacemDeclaration[]
 
   @@index([artistUserId, date])
   @@index([date, status])
@@ -442,7 +444,7 @@ model SacemDeclaration {
   id                  String                 @id @default(cuid())
   projectId           String?
   versionId           String?
-  concertId           String?                @unique
+  concertId           String?
   type                SacemDeclarationType
   status              SacemDeclarationStatus @default(PENDING_SIGNATURE)
   pdfS3Bucket         String?
@@ -458,6 +460,9 @@ model SacemDeclaration {
   version Version? @relation(fields: [versionId], references: [id], onDelete: Restrict)
   concert Concert? @relation(fields: [concertId], references: [id], onDelete: Restrict)
 
+  // Un même concert peut porter une déclaration LIVE et une SPEDIDAM_PRESENCE,
+  // mais jamais deux fois le même type.
+  @@unique([concertId, type])
   @@index([type, status])
 }
 

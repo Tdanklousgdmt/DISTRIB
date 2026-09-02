@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 
 import { createConcertAction } from "../sacem-actions";
 import type { ActionState } from "../actions";
@@ -10,13 +10,16 @@ const inputCls =
 
 export function NewConcertForm({
   projects,
+  programs,
 }: {
   projects: Array<{ id: string; title: string }>;
+  programs: Array<{ id: string; name: string; reference: string }>;
 }) {
   const [state, action, pending] = useActionState<ActionState, FormData>(
     createConcertAction,
     undefined,
   );
+  const [programId, setProgramId] = useState("");
 
   return (
     <form action={action} className="space-y-3">
@@ -87,6 +90,30 @@ export function NewConcertForm({
           ))}
         </select>
       </div>
+      {programs.length > 0 && (
+        <div>
+          <label htmlFor="c-program" className="block text-sm font-medium">
+            Programme réutilisé <span className="text-black/40 dark:text-white/40">(optionnel)</span>
+          </label>
+          <select
+            id="c-program"
+            name="programId"
+            value={programId}
+            onChange={(e) => setProgramId(e.target.value)}
+            className={inputCls + " dark:bg-black"}
+          >
+            <option value="">— Nouveau programme —</option>
+            {programs.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name} (réf. {p.reference})
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-black/50 dark:text-white/50">
+            Sa référence pré-remplit la déclaration de l&apos;organisateur.
+          </p>
+        </div>
+      )}
       <div>
         <label htmlFor="c-setlist" className="block text-sm font-medium">
           Setlist <span className="text-black/40 dark:text-white/40">(un titre par ligne)</span>
@@ -99,6 +126,21 @@ export function NewConcertForm({
           className={inputCls}
         />
       </div>
+      {!programId && (
+        <div>
+          <label htmlFor="c-save-program" className="block text-sm font-medium">
+            Enregistrer comme programme réutilisable{" "}
+            <span className="text-black/40 dark:text-white/40">(optionnel)</span>
+          </label>
+          <input
+            id="c-save-program"
+            name="saveAsProgram"
+            maxLength={200}
+            placeholder="Ex : Programme tournée 2026"
+            className={inputCls}
+          />
+        </div>
+      )}
       {state?.error && <p className="text-sm text-red-600">{state.error}</p>}
       <button
         type="submit"
