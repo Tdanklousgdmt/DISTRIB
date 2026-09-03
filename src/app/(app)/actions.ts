@@ -9,6 +9,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { sendEmail } from "@/lib/email";
 import { registerProjectOnchain } from "@/lib/blockchain";
+import { startSplitsSignatureRequest } from "@/lib/esign/service";
 import {
   createNotification,
   finalizeApprovedVersion,
@@ -285,13 +286,17 @@ export async function setSplitsAction(
   const percentages = formData.getAll("percentage").map(String);
   const roleLabels = formData.getAll("roleLabel").map(String);
 
+  // Une part à 0 % n'est pas un ayant droit : elle ne figure ni sur la fiche
+  // ni parmi les signataires (contributeur arrivé après coup, technicien…).
   const parsed = setSplitsSchema.safeParse({
     versionId: formData.get("versionId"),
-    entries: contributorIds.map((contributorId, i) => ({
-      contributorId,
-      percentage: percentages[i],
-      roleLabel: roleLabels[i] || undefined,
-    })),
+    entries: contributorIds
+      .map((contributorId, i) => ({
+        contributorId,
+        percentage: percentages[i],
+        roleLabel: roleLabels[i] || undefined,
+      }))
+      .filter((e) => Number(e.percentage) > 0),
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Répartition invalide." };
@@ -358,7 +363,8 @@ export async function setSplitsAction(
 
 /**
  * « Adresser en signature » (fiche SACEM, écran p.66 du prototype) : enregistre
- * la répartition proposée puis notifie chaque contributeur qu'une part l'attend.
+ * la répartition proposée puis ouvre une demande de signature électronique
+ * (plugin esign — pilote local ou prestataire eIDAS) pour chaque contributeur.
  * Réutilise setSplitsAction — donc hérite de la cascade d'invalidation si une
  * répartition signée est modifiée.
  */
@@ -373,33 +379,16 @@ export async function sendSplitsForSignatureAction(
   const versionId = String(formData.get("versionId") ?? "");
   const version = await prisma.version.findUnique({
     where: { id: versionId },
-    include: {
-      project: { include: { contributors: { include: { user: { select: { email: true } } } } } },
-    },
+    select: { projectId: true },
   });
   if (!version) return { error: "Version introuvable." };
 
-  await Promise.all(
-    version.project.contributors.map(async (c) => {
-      await createNotification({
-        userId: c.userId,
-        type: "SPLIT_SIGNATURE_REQUESTED",
-        payload: {
-          projectId: version.projectId,
-          projectTitle: version.project.title,
-          versionId,
-          versionNumber: version.versionNumber,
-        },
-      });
-      if (c.userId !== user.id) {
-        await sendEmail({
-          to: c.user.email,
-          subject: `Votre part sur « ${version.project.title} » attend votre signature`,
-          text: `Une répartition des droits vous est adressée en signature sur DISTRIB : « ${version.project.title} » (version ${version.versionNumber}).`,
-        });
-      }
-    }),
-  );
+  try {
+    await startSplitsSignatureRequest({ versionId, requestedById: user.id });
+  } catch (e) {
+    console.error("[esign] ouverture de la demande échouée :", e);
+    return { error: "La demande de signature n'a pas pu être ouverte." };
+  }
 
   revalidatePath(`/projects/${version.projectId}/fiche-sacem`);
   return undefined;
@@ -455,42 +444,6 @@ export async function attachOwnFicheAction(
   revalidatePath(`/projects/${version.projectId}`);
   revalidatePath(`/projects/${version.projectId}/fiche-sacem`);
   revalidatePath("/revenus");
-  return undefined;
-}
-
-/**
- * Un contributeur confirme/signe sa propre ligne de répartition (chacun signe
- * sa part, comme pour les approbations). Si Yousign est provisionné, une
- * copie du bulletin lui est envoyée en parallèle pour une trace eIDAS
- * complète — la signature en base reste ce qui fait foi côté produit.
- */
-export async function signSplitAction(
-  _prev: ActionState,
-  formData: FormData,
-): Promise<ActionState> {
-  const user = await requireUser();
-  const splitId = String(formData.get("splitId") ?? "");
-
-  const split = await prisma.split.findUnique({
-    where: { id: splitId },
-    include: {
-      contributor: { select: { userId: true } },
-      version: { select: { id: true, projectId: true } },
-    },
-  });
-  if (!split) return { error: "Répartition introuvable." };
-  if (split.contributor.userId !== user.id) {
-    return { error: "Vous ne pouvez signer que votre propre part." };
-  }
-  if (split.signedAt) return { error: "Déjà signée." };
-
-  await prisma.split.update({
-    where: { id: splitId },
-    data: { signedAt: new Date() },
-  });
-
-  revalidatePath(`/projects/${split.version.projectId}`);
-  revalidatePath(`/projects/${split.version.projectId}/fiche-sacem`);
   return undefined;
 }
 

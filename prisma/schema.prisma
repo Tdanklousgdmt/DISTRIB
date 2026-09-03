@@ -153,6 +153,10 @@ model User {
   ownedConcerts   Concert[]
   concertPrograms ConcertProgram[]
   notifications   Notification[]
+
+  // Signature électronique (plugin esign) : demandes que j'ai lancées / que je dois signer.
+  signatureRequests SignatureRequest[] @relation("SignatureRequester")
+  signatures        SignatureSigner[]  @relation("SignatureSignerUser")
 }
 
 model Account {
@@ -283,6 +287,7 @@ model Version {
   approvals    Approval[]
   splits       Split[]
   declarations SacemDeclaration[]
+  signatureRequests SignatureRequest[]
 
   @@unique([projectId, versionNumber])
   @@index([projectId, isCurrent])
@@ -472,6 +477,7 @@ model SacemDeclaration {
   project Project? @relation(fields: [projectId], references: [id], onDelete: Restrict)
   version Version? @relation(fields: [versionId], references: [id], onDelete: Restrict)
   concert Concert? @relation(fields: [concertId], references: [id], onDelete: Restrict)
+  signatureRequests SignatureRequest[]
 
   // Un même concert peut porter une déclaration LIVE et une SPEDIDAM_PRESENCE,
   // mais jamais deux fois le même type.
@@ -537,4 +543,91 @@ model Notification {
 
   @@index([userId, readAt])
   @@index([type, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SIGNATURE ÉLECTRONIQUE — plugin `src/lib/esign` (§3.2 et §6.1 du mémoire :
+// niveau avancé par défaut, qualifié en option ; prestataire interchangeable).
+// Une demande porte UN document (PDF archivé dans le vault, jamais modifié) et
+// N signataires. Le PDF signé (page de signatures + piste d'audit) est un
+// second objet du vault — l'original reste intact.
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum SignatureProviderKind {
+  LOCAL // signature électronique simple, cérémonie dans DISTRIB
+  YOUSIGN // prestataire eIDAS (liste de confiance ANSSI)
+}
+
+enum SignatureLevel {
+  SIMPLE
+  ADVANCED
+  QUALIFIED
+}
+
+enum SignatureRequestKind {
+  SPLITS // fiche de répartition des droits
+  DECLARATION // bulletin SACEM / attestation
+}
+
+enum SignatureRequestStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+}
+
+enum SignatureSignerStatus {
+  PENDING
+  SIGNED
+  DECLINED
+}
+
+model SignatureRequest {
+  id                   String                 @id @default(cuid())
+  kind                 SignatureRequestKind
+  provider             SignatureProviderKind
+  level                SignatureLevel
+  status               SignatureRequestStatus @default(PENDING)
+  title                String
+  versionId            String?
+  declarationId        String?
+  documentKey          String // PDF soumis à signature (vault)
+  documentSha256       String
+  signedDocumentKey    String? // PDF + page de signatures (vault), une fois complet
+  signedDocumentSha256 String?
+  externalId           String?                @unique // id chez le prestataire
+  requestedById        String
+  createdAt            DateTime               @default(now())
+  completedAt          DateTime?
+
+  version     Version?          @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  declaration SacemDeclaration? @relation(fields: [declarationId], references: [id], onDelete: Restrict)
+  requestedBy User              @relation("SignatureRequester", fields: [requestedById], references: [id], onDelete: Restrict)
+  signers     SignatureSigner[]
+
+  @@index([versionId, status])
+  @@index([declarationId, status])
+}
+
+model SignatureSigner {
+  id             String                @id @default(cuid())
+  requestId      String
+  userId         String
+  email          String
+  name           String?
+  status         SignatureSignerStatus @default(PENDING)
+  signedAt       DateTime?
+  // Piste d'audit (pilote local) — ce qui rend la signature opposable :
+  // qui, quand, depuis où, sur quel document (hash), avec quel consentement.
+  signedName     String?
+  ipAddress      String?
+  userAgent      String?
+  consentText    String?
+  signatureImage String? // PNG data-URL du tracé (démo) — intégré à la page de signatures
+  externalId     String? // id du signataire chez le prestataire
+  signatureLink  String? // URL de cérémonie (locale ou prestataire)
+
+  request SignatureRequest @relation(fields: [requestId], references: [id], onDelete: Restrict)
+  user    User             @relation("SignatureSignerUser", fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([requestId, userId])
 }

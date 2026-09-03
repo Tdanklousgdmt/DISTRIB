@@ -3,7 +3,7 @@
 import { useActionState, useState } from "react";
 
 import { sendSplitsForSignatureAction, type ActionState } from "../../../actions";
-import { SplitSignButton } from "../SplitSignButton";
+import Link from "next/link";
 
 export interface ProposedRow {
   contributorId: string;
@@ -15,6 +15,15 @@ export interface ProposedRow {
   percentage: number;
   splitId: string | null;
   signedAt: string | null;
+  signerId: string | null; // SignatureSigner.id (plugin esign) — lien de cérémonie
+}
+
+export interface SignatureSummary {
+  id: string;
+  status: "PENDING" | "COMPLETED" | "CANCELLED";
+  providerLabel: string;
+  level: string;
+  signedPdfUrl: string | null;
 }
 
 // « Utiliser la fiche proposée » — écran p.66 : répartition déduite des
@@ -25,11 +34,13 @@ export function ProposedSplits({
   rows: initialRows,
   alreadySent,
   currentUserId,
+  signature,
 }: {
   versionId: string;
   rows: ProposedRow[];
   alreadySent: boolean;
   currentUserId: string;
+  signature: SignatureSummary | null;
 }) {
   const [state, action, pending] = useActionState<ActionState, FormData>(
     sendSplitsForSignatureAction,
@@ -87,8 +98,13 @@ export function ProposedSplits({
                     <span className="rounded-full bg-green-500/15 px-2 py-0.5 font-mono text-[10.5px] text-green-700 dark:text-green-400">
                       Signée
                     </span>
-                  ) : r.userId === currentUserId ? (
-                    <SplitSignButton splitId={r.splitId} />
+                  ) : r.userId === currentUserId && r.signerId && signature?.status === "PENDING" ? (
+                    <Link
+                      href={`/sign/${r.signerId}`}
+                      className="rounded-full bg-foreground px-2.5 py-0.5 text-[11px] font-medium text-background"
+                    >
+                      Signer →
+                    </Link>
                   ) : (
                     <span className="rounded-full bg-amber-500/15 px-2 py-0.5 font-mono text-[10.5px] text-amber-700 dark:text-amber-400">
                       En attente
@@ -126,6 +142,25 @@ export function ProposedSplits({
         </p>
       )}
       {state?.error && <p className="text-xs text-red-600">{state.error}</p>}
+
+      {signature && (
+        <div className="rounded-lg border border-black/10 px-3 py-2 text-xs dark:border-white/10">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-black/60 dark:text-white/60">
+              Procédé : {signature.providerLabel} · niveau {signature.level.toLowerCase()}
+            </span>
+            {signature.status === "COMPLETED" && signature.signedPdfUrl ? (
+              <a href={signature.signedPdfUrl} className="font-medium underline">
+                Fiche signée par tous — PDF
+              </a>
+            ) : (
+              <span className="font-mono text-[10.5px] text-amber-700 dark:text-amber-400">
+                Signatures en cours
+              </span>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="flex gap-2">
         {!editing ? (

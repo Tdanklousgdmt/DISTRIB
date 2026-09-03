@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/prisma";
 import { auddConfigured, resendConfigured, yousignConfigured } from "@/lib/env";
+import { getSignatureProvider } from "@/lib/esign";
 import { storageConfigured, storageDriver } from "@/lib/storage";
 import { blockchainEnabled } from "@/lib/blockchain";
 
@@ -24,6 +25,7 @@ export async function GET() {
       resend: resendConfigured(),
       blockchain: blockchainEnabled(),
       yousign: yousignConfigured(),
+      esign: getSignatureProvider().kind,
       audd: auddConfigured(),
     },
   };

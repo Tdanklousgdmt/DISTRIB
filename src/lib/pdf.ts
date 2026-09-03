@@ -591,3 +591,122 @@ export async function buildSpedidamPdf(data: SpedidamPresenceData): Promise<Uint
   drawFooter(page, regular, data.generatedAt);
   return doc.save();
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Page de signatures électroniques (plugin esign, pilote local) — ajoutée à
+// la fin du PDF original, jamais insérée dedans : l'original reste vérifiable
+// par son SHA-256, la page porte la piste d'audit de chaque signataire.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface SignaturePageData {
+  title: string;
+  requestId: string;
+  documentSha256: string;
+  providerLabel: string;
+  level: string;
+  completedAt: Date;
+  signers: Array<{
+    name: string;
+    email: string;
+    signedAt: Date | null;
+    ipAddress: string | null;
+    userAgent: string | null;
+    signatureImage: string | null; // PNG data-URL
+  }>;
+}
+
+function fmtDateTime(d: Date): string {
+  return d.toLocaleString("fr-FR", { timeZone: "Europe/Paris", dateStyle: "long", timeStyle: "short" });
+}
+
+export async function appendSignaturePage(
+  original: Uint8Array,
+  data: SignaturePageData,
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(original);
+  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const regular = await doc.embedFont(StandardFonts.Helvetica);
+  const mono = await doc.embedFont(StandardFonts.Courier);
+
+  const page = doc.addPage(A4);
+  const c: Cursor = { page, y: A4[1] - MARGIN - 10 };
+
+  drawTitle(c, bold, "Page de signatures électroniques");
+  page.drawText(data.title, { x: MARGIN, y: c.y, size: 11, font: regular, color: rgb(0.3, 0.3, 0.35) });
+  c.y -= 24;
+
+  drawSection(c, bold, "Document signé");
+  drawField(c, bold, mono, "Empreinte SHA-256", data.documentSha256.slice(0, 32));
+  drawField(c, bold, mono, "", data.documentSha256.slice(32));
+  drawField(c, bold, regular, "Procédé", `${data.providerLabel} — niveau ${data.level.toLowerCase()}`);
+  drawField(c, bold, mono, "Demande", data.requestId);
+  drawField(c, bold, regular, "Complétée le", fmtDateTime(data.completedAt));
+
+  drawSection(c, bold, "Signataires");
+  for (const s of data.signers) {
+    if (c.y < 170) {
+      const next = doc.addPage(A4);
+      c.page = next;
+      c.y = A4[1] - MARGIN;
+    }
+    const top = c.y;
+    page.drawRectangle({
+      x: MARGIN,
+      y: top - 88,
+      width: A4[0] - 2 * MARGIN,
+      height: 96,
+      borderColor: rgb(0.85, 0.85, 0.87),
+      borderWidth: 0.6,
+    });
+    c.page.drawText(s.name, { x: MARGIN + 12, y: top - 10, size: 11, font: bold });
+    c.page.drawText(s.email, { x: MARGIN + 12, y: top - 25, size: 9, font: regular, color: rgb(0.4, 0.4, 0.45) });
+    c.page.drawText(
+      s.signedAt ? `Signé le ${fmtDateTime(s.signedAt)}` : "Non signé",
+      { x: MARGIN + 12, y: top - 42, size: 9, font: regular },
+    );
+    c.page.drawText(`Adresse IP : ${s.ipAddress ?? "—"}`, { x: MARGIN + 12, y: top - 56, size: 8, font: mono, color: rgb(0.35, 0.35, 0.4) });
+    const ua = (s.userAgent ?? "—").slice(0, 80);
+    c.page.drawText(`Navigateur : ${ua}`, { x: MARGIN + 12, y: top - 69, size: 7, font: mono, color: rgb(0.35, 0.35, 0.4) });
+
+    if (s.signatureImage?.startsWith("data:image/png;base64,")) {
+      try {
+        const png = await doc.embedPng(Buffer.from(s.signatureImage.slice("data:image/png;base64,".length), "base64"));
+        const w = 150;
+        const h = (png.height / png.width) * w;
+        c.page.drawImage(png, { x: A4[0] - MARGIN - w - 12, y: top - 10 - h, width: w, height: h });
+      } catch {
+        // tracé illisible : la piste d'audit textuelle suffit
+      }
+    }
+    c.y = top - 106;
+  }
+
+  drawSection(c, bold, "Consentement");
+  const consent =
+    "Chaque signataire a déclaré avoir lu le document et consenti à le signer électroniquement, " +
+    "avec la même valeur qu'une signature manuscrite (règlement (UE) n° 910/2014 « eIDAS », art. 25 ; " +
+    "Code civil, art. 1367). Horodatage et adresse IP relevés côté serveur DISTRIB.";
+  for (const line of wrap(consent, 95)) {
+    c.page.drawText(line, { x: MARGIN, y: c.y, size: 8.5, font: regular, color: rgb(0.3, 0.3, 0.35) });
+    c.y -= 12;
+  }
+
+  drawFooter(c.page, regular, data.completedAt);
+  return doc.save();
+}
+
+function wrap(text: string, max: number): string[] {
+  const words = text.split(" ");
+  const lines: string[] = [];
+  let cur = "";
+  for (const w of words) {
+    if ((cur + " " + w).trim().length > max) {
+      lines.push(cur.trim());
+      cur = w;
+    } else {
+      cur = (cur + " " + w).trim();
+    }
+  }
+  if (cur) lines.push(cur);
+  return lines;
+}

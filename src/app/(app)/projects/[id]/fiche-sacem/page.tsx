@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { prisma } from "@/lib/prisma";
+import { getSignatureProvider } from "@/lib/esign";
 import { requireUser } from "@/lib/session";
 import { buildSacemChecklist } from "@/lib/sacem-checklist";
 import { avatarColor, displayName, initials } from "@/lib/avatar";
@@ -46,6 +47,12 @@ export default async function FicheSacemPage({
         orderBy: { versionNumber: "desc" },
         include: {
           splits: true,
+          signatureRequests: {
+            where: { status: { in: ["PENDING", "COMPLETED"] } },
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            include: { signers: true },
+          },
           declarations: {
             where: { type: { in: ["OEUVRE", "ADAMI_ATTESTATION"] } },
             select: { id: true, type: true, status: true, pdfS3Key: true },
@@ -77,6 +84,7 @@ export default async function FicheSacemPage({
   // au dernier dépôt de la personne.
   let rows: ProposedRow[] = [];
   let alreadySent = false;
+  const sigRequest = currentVersion?.signatureRequests[0] ?? null;
   if (currentVersion) {
     const existing = currentVersion.splits;
     alreadySent = existing.length > 0;
@@ -124,6 +132,7 @@ export default async function FicheSacemPage({
         percentage: pct,
         splitId: split?.id ?? null,
         signedAt: split?.signedAt ? split.signedAt.toISOString() : null,
+        signerId: sigRequest?.signers.find((sg) => sg.userId === c.userId)?.id ?? null,
       };
     });
   }
@@ -207,12 +216,26 @@ export default async function FicheSacemPage({
                     (signature, envoi) — sinon son état local masquerait le nouvel état. */}
               <ProposedSplits
                 key={rows
-                  .map((r) => `${r.splitId}:${r.signedAt}:${r.percentage}`)
+                  .map((r) => `${r.splitId}:${r.signedAt}:${r.percentage}:${r.signerId}`)
                   .join("|")}
                 versionId={currentVersion.id}
                 rows={rows}
                 alreadySent={alreadySent}
                 currentUserId={user.id}
+                signature={
+                  sigRequest
+                    ? {
+                        id: sigRequest.id,
+                        status: sigRequest.status,
+                        providerLabel: getSignatureProvider().label,
+                        level: sigRequest.level,
+                        signedPdfUrl:
+                          sigRequest.status === "COMPLETED"
+                            ? `/api/signature-requests/${sigRequest.id}/document?signed=1`
+                            : null,
+                      }
+                    : null
+                }
               />
             </div>
           </div>
