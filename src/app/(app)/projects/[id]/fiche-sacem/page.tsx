@@ -57,6 +57,7 @@ export default async function FicheSacemPage({
           },
           declarations: {
             where: { type: { in: ["OEUVRE", "ADAMI_ATTESTATION"] } },
+            orderBy: { createdAt: "desc" },
             select: { id: true, type: true, status: true, pdfS3Key: true },
           },
         },
@@ -74,8 +75,15 @@ export default async function FicheSacemPage({
   const checklist = currentVersion
     ? await buildSacemChecklist(currentVersion.id)
     : null;
+  // Déclaration d'œuvre : la plus récente qui porte un PDF signé (bulletin 726
+  // ou fiche déposée), sinon la plus récente tout court.
   const oeuvre =
-    currentVersion?.declarations.find((d) => d.type === "OEUVRE") ?? null;
+    currentVersion?.declarations.find((d) => d.type === "OEUVRE" && d.pdfS3Key) ??
+    currentVersion?.declarations.find((d) => d.type === "OEUVRE") ??
+    null;
+  // Fiche « déposée » = PDF versé par l'artiste lui-même (pas un document
+  // produit par DISTRIB dans le dossier des signatures).
+  const ownFiche = Boolean(oeuvre?.pdfS3Key && !oeuvre.pdfS3Key.includes("/signatures/"));
   const adami =
     currentVersion?.declarations.find((d) => d.type === "ADAMI_ATTESTATION") ??
     null;
@@ -282,7 +290,7 @@ export default async function FicheSacemPage({
               charge uniquement de la faire signer et de l&apos;archiver.
             </p>
             <div className="mt-4">
-              {oeuvre?.pdfS3Key ? (
+              {ownFiche ? (
                 <div className="rounded-lg border border-green-500/30 bg-green-500/5 p-4 text-sm">
                   <div className="font-medium text-green-800 dark:text-green-300">
                     Fiche déposée et archivée

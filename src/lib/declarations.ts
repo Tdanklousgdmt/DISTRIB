@@ -1,7 +1,8 @@
 import "server-only";
 
 import { prisma } from "@/lib/prisma";
-import { buildAdamiPdf, buildLivePdf, buildOeuvrePdf, buildSpedidamPdf } from "@/lib/pdf";
+import { appendSignaturePage, buildAdamiPdf, buildLivePdf, buildOeuvrePdf, buildSpedidamPdf } from "@/lib/pdf";
+import { getSignatureProvider } from "@/lib/esign";
 
 const roleLabels: Record<string, string> = {
   ARTIST: "Artiste",
@@ -24,8 +25,14 @@ export async function renderDeclarationPdf(declarationId: string): Promise<{
       },
       version: {
         include: {
-          files: { select: { filename: true, sha256Hash: true } },
+          files: { select: { filename: true, sha256Hash: true, uploadedAt: true } },
           splits: { include: { contributor: { include: { user: true } } } },
+          signatureRequests: {
+            where: { status: "COMPLETED" },
+            orderBy: { completedAt: "desc" },
+            take: 1,
+            include: { signers: true },
+          },
         },
       },
       concert: { include: { artist: true } },
@@ -35,20 +42,59 @@ export async function renderDeclarationPdf(declarationId: string): Promise<{
 
   if (declaration.type === "OEUVRE" && declaration.version && declaration.project) {
     const v = declaration.version;
-    const bytes = await buildOeuvrePdf({
+    const signed = v.signatureRequests[0] ?? null;
+    const generatedAt = new Date();
+    // Durée de l'œuvre : celle de la version, sinon la dernière connue du projet.
+    const durationSeconds =
+      v.durationSeconds ??
+      (
+        await prisma.version.findFirst({
+          where: { projectId: declaration.project.id, durationSeconds: { not: null } },
+          orderBy: { versionNumber: "desc" },
+          select: { durationSeconds: true },
+        })
+      )?.durationSeconds ??
+      null;
+    let bytes = await buildOeuvrePdf({
       projectTitle: declaration.project.title,
       isrc: declaration.project.isrc,
       versionNumber: v.versionNumber,
       finalizedAt: v.finalizedAt,
       finalPolygonTxHash: v.finalPolygonTxHash,
+      durationSeconds,
+      performers: declaration.project.contributors
+        .filter((c) => c.role === "ARTIST")
+        .map((c) => c.user.name ?? c.user.email),
       rightHolders: v.splits.map((s) => ({
         name: s.contributor.user.name ?? s.contributor.user.email,
-        role: s.roleLabel ?? s.contributor.role,
+        role: s.roleLabel ?? (roleLabels[s.contributor.role] ?? s.contributor.role),
         percentage: Number(s.percentage).toFixed(2),
+        email: s.contributor.user.email,
+        ipi: s.contributor.user.ipiCode,
+        signedAt: s.signedAt,
       })),
-      files: v.files.map((f) => ({ filename: f.filename, sha256: f.sha256Hash })),
-      generatedAt: new Date(),
+      files: v.files.map((f) => ({ filename: f.filename, sha256: f.sha256Hash, uploadedAt: f.uploadedAt })),
+      generatedAt,
+      electronicallySigned: Boolean(signed),
     });
+    if (signed) {
+      bytes = await appendSignaturePage(bytes, {
+        title: signed.title,
+        requestId: signed.id,
+        documentSha256: signed.documentSha256,
+        providerLabel: getSignatureProvider().label,
+        level: signed.level,
+        completedAt: signed.completedAt ?? generatedAt,
+        signers: signed.signers.map((sg) => ({
+          name: sg.signedName ?? sg.name ?? sg.email,
+          email: sg.email,
+          signedAt: sg.signedAt,
+          ipAddress: sg.ipAddress,
+          userAgent: sg.userAgent,
+          signatureImage: sg.signatureImage,
+        })),
+      });
+    }
     const slug = declaration.project.title.replace(/[^\w-]+/g, "_").slice(0, 60);
     return { bytes, filename: `sacem-oeuvre-${slug}-v${v.versionNumber}.pdf` };
   }

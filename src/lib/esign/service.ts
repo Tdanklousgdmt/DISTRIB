@@ -414,10 +414,22 @@ export async function startBulletin726SignatureRequest(params: {
     .map((c) => c.user.name ?? c.user.email.split("@")[0]);
   const concert = version.project.concerts[0];
 
+  // Durée de l'œuvre : celle de la version scellée, sinon la dernière connue.
+  const dureeSecondes =
+    version.durationSeconds ??
+    (
+      await prisma.version.findFirst({
+        where: { projectId: version.projectId, durationSeconds: { not: null } },
+        orderBy: { versionNumber: "desc" },
+        select: { durationSeconds: true },
+      })
+    )?.durationSeconds ??
+    null;
+
   const pdfBytes = await fillBulletin726({
     titre: version.project.title,
     sousTitre: input.sousTitre,
-    dureeSecondes: version.durationSeconds,
+    dureeSecondes,
     genre: input.genre,
     premiereExploitation: input.premiereExploitation ?? concert?.date ?? null,
     lieu: input.lieu || (concert ? [concert.venue, concert.city].filter(Boolean).join(", ") : null),

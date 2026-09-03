@@ -37,6 +37,19 @@ export async function buildSacemChecklist(versionId: string): Promise<SacemCheck
   });
   if (!version) return null;
 
+  // Durée : celle de la version, sinon la dernière connue du projet (les
+  // bulletins utilisent le même repli).
+  const knownDuration =
+    version.durationSeconds ??
+    (
+      await prisma.version.findFirst({
+        where: { projectId: version.projectId, durationSeconds: { not: null } },
+        select: { durationSeconds: true },
+        orderBy: { versionNumber: "desc" },
+      })
+    )?.durationSeconds ??
+    null;
+
   const missingIpi = version.project.contributors.filter((c) => !c.user.ipiCode);
   const hasAudio = version.files.some((f) => AUDIO_FILE_TYPES.has(f.fileType));
   const hasSplits = version.splits.length > 0;
@@ -52,7 +65,7 @@ export async function buildSacemChecklist(versionId: string): Promise<SacemCheck
     {
       key: "duration",
       label: "Durée renseignée",
-      ok: version.durationSeconds != null,
+      ok: knownDuration != null,
       blocking: true,
     },
     {

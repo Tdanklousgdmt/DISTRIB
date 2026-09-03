@@ -73,13 +73,27 @@ export interface OeuvreDeclarationData {
   versionNumber: number;
   finalizedAt: Date | null;
   finalPolygonTxHash: string | null;
+  durationSeconds?: number | null;
+  performers?: string[];
   rightHolders: Array<{
     name: string;
     role: string;
     percentage: string; // "33.33"
+    email?: string;
+    ipi?: string | null;
+    signedAt?: Date | null;
   }>;
-  files: Array<{ filename: string; sha256: string }>;
+  files: Array<{ filename: string; sha256: string; uploadedAt?: Date | null }>;
   generatedAt: Date;
+  /** Vrai si une page de signatures électroniques suit (plugin esign). */
+  electronicallySigned?: boolean;
+}
+
+function fmtDuration(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.round(seconds % 60);
+  return h > 0 ? `${h} h ${String(m).padStart(2, "0")} min ${String(s).padStart(2, "0")} s` : `${m} min ${String(s).padStart(2, "0")} s`;
 }
 
 /** Bulletin de déclaration d'œuvre. */
@@ -96,6 +110,8 @@ export async function buildOeuvrePdf(data: OeuvreDeclarationData): Promise<Uint8
   drawSection(c, bold, "Œuvre");
   drawField(c, bold, regular, "Titre", data.projectTitle);
   drawField(c, bold, regular, "ISRC", data.isrc ?? "Non attribué");
+  drawField(c, bold, regular, "Durée", data.durationSeconds != null ? fmtDuration(data.durationSeconds) : "Non renseignée");
+  drawField(c, bold, regular, "Interprète(s)", data.performers?.length ? data.performers.join(", ") : "—");
   drawField(c, bold, regular, "Version déclarée", `Version ${data.versionNumber}`);
   drawField(
     c,
@@ -107,12 +123,31 @@ export async function buildOeuvrePdf(data: OeuvreDeclarationData): Promise<Uint8
 
   drawSection(c, bold, "Ayants droit et répartition");
   for (const rh of data.rightHolders) {
-    drawField(c, bold, regular, `${rh.name} (${rh.role})`, `${rh.percentage} %`);
+    // Nom en gras, rôle en regular, part à droite — sur deux lignes pour que
+    // les libellés longs ne chevauchent jamais la colonne des pourcentages.
+    c.page.drawText(rh.name, { x: MARGIN, y: c.y, size: 10, font: bold });
+    const nameW = bold.widthOfTextAtSize(rh.name, 10);
+    c.page.drawText(` — ${rh.role}`, { x: MARGIN + nameW, y: c.y, size: 9, font: regular, color: rgb(0.3, 0.3, 0.35) });
+    const pct = `${rh.percentage} %`;
+    c.page.drawText(pct, { x: A4[0] - MARGIN - mono.widthOfTextAtSize(pct, 10), y: c.y, size: 10, font: mono });
+    c.y -= 12;
+    const extras = [
+      rh.email ? rh.email : null,
+      rh.ipi ? `IPI ${rh.ipi}` : "IPI non renseigné",
+      rh.signedAt ? `part signée le ${rh.signedAt.toLocaleDateString("fr-FR")}` : "part non signée",
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    c.page.drawText(extras, { x: MARGIN + 12, y: c.y, size: 7.5, font: regular, color: rgb(0.4, 0.4, 0.45) });
+    c.y -= 16;
   }
 
   drawSection(c, bold, "Preuves d'antériorité (vault DISTRIB)");
   for (const f of data.files.slice(0, 12)) {
-    c.page.drawText(f.filename, { x: MARGIN, y: c.y, size: 9, font: regular });
+    c.page.drawText(
+      f.uploadedAt ? `${f.filename} — déposé le ${f.uploadedAt.toLocaleDateString("fr-FR")}` : f.filename,
+      { x: MARGIN, y: c.y, size: 9, font: regular },
+    );
     c.y -= 12;
     c.page.drawText(`SHA-256 ${f.sha256}`, {
       x: MARGIN + 12,
@@ -129,7 +164,15 @@ export async function buildOeuvrePdf(data: OeuvreDeclarationData): Promise<Uint8
 
   drawSection(c, bold, "Signature");
   drawField(c, bold, regular, "Fait le", data.generatedAt.toLocaleDateString("fr-FR"));
-  drawField(c, bold, regular, "Signature de l'ayant droit", " ");
+  drawField(
+    c,
+    bold,
+    regular,
+    "Signatures",
+    data.electronicallySigned
+      ? "Signatures électroniques des ayants droit — voir la page suivante."
+      : "À recueillir (chaque ayant droit signe depuis DISTRIB).",
+  );
 
   drawFooter(page, regular, data.generatedAt);
   return doc.save();

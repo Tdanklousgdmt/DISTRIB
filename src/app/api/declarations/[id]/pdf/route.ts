@@ -28,10 +28,13 @@ export async function GET(
   });
   if (declaration?.pdfS3Key) {
     const bytes = await readVaultObject(declaration.pdfS3Key);
+    // Nom lisible : celui de l'objet du vault sans son préfixe de hash.
+    const base = declaration.pdfS3Key.split("/").pop() ?? "declaration.pdf";
+    const filename = base.replace(/^[0-9a-f]{64}-/, "");
     return new NextResponse(new Uint8Array(bytes), {
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="fiche-sacem-deposee.pdf"`,
+        "Content-Disposition": `attachment; filename="${filename}"`,
       },
     });
   }
