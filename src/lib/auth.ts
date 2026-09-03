@@ -5,6 +5,7 @@ import Resend from "next-auth/providers/resend";
 
 import { prisma } from "@/lib/prisma";
 import { optionalEnv, resendConfigured } from "@/lib/env";
+import { rememberLocalMagicLink } from "@/lib/local-magic-links";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Auth.js v5 (NextAuth beta) — magic link e-mail via Resend, sessions en base.
@@ -32,6 +33,8 @@ export const authConfig = {
       // dans la console du serveur au lieu d'être envoyé par e-mail.
       async sendVerificationRequest({ identifier, url, provider }) {
         if (!resendConfigured()) {
+          // Affiché aussi sur /verify (hors production) — voir local-magic-links.
+          rememberLocalMagicLink(identifier, url);
           console.log(
             "\n──────────────────────────────────────────────────\n" +
               `🔑 LIEN MAGIQUE (mode local, pas d'e-mail envoyé)\n` +

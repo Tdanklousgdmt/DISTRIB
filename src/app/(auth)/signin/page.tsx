@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 
 import { signIn, auth } from "@/lib/auth";
 import { resendConfigured } from "@/lib/env";
+import { localMagicLinksEnabled } from "@/lib/local-magic-links";
 
 // Connexion par lien magique (non-négo #5 : pas de mot de passe, zéro friction).
 export default async function SignInPage() {
@@ -31,8 +32,17 @@ export default async function SignInPage() {
 
         {!configured && (
           <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
-            Envoi d&apos;e-mails non configuré (RESEND_API_KEY manquant). Renseignez-le
-            dans <code>.env.local</code> pour recevoir le lien.
+            {localMagicLinksEnabled() ? (
+              <>
+                Mode local — aucun e-mail n&apos;est envoyé : votre lien de connexion
+                s&apos;affichera directement à l&apos;étape suivante.
+              </>
+            ) : (
+              <>
+                Envoi d&apos;e-mails non configuré (RESEND_API_KEY manquant). Renseignez-le
+                dans <code>.env.local</code> pour recevoir le lien.
+              </>
+            )}
           </p>
         )}
 
