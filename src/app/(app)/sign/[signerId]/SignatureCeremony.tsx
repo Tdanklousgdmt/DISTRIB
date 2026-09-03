@@ -36,7 +36,11 @@ export function SignatureCeremony({
     ctx.strokeStyle = "#111";
     ctx.beginPath();
     ctx.moveTo(p.x, p.y);
-    e.currentTarget.setPointerCapture(e.pointerId);
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // pointeur inconnu (événement synthétique) : on trace quand même
+    }
   }
   function move(e: React.PointerEvent<HTMLCanvasElement>) {
     if (!drawing.current) return;

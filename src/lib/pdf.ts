@@ -637,7 +637,8 @@ export async function appendSignaturePage(
 
   drawSection(c, bold, "Document signé");
   drawField(c, bold, mono, "Empreinte SHA-256", data.documentSha256.slice(0, 32));
-  drawField(c, bold, mono, "", data.documentSha256.slice(32));
+  c.page.drawText(data.documentSha256.slice(32), { x: MARGIN + 150, y: c.y, size: 10, font: mono });
+  c.y -= 16;
   drawField(c, bold, regular, "Procédé", `${data.providerLabel} — niveau ${data.level.toLowerCase()}`);
   drawField(c, bold, mono, "Demande", data.requestId);
   drawField(c, bold, regular, "Complétée le", fmtDateTime(data.completedAt));
