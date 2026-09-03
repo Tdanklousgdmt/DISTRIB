@@ -164,3 +164,46 @@ export async function rejectVersion(versionId: string, rejectedById: string) {
     });
   }
 }
+
+/**
+ * Un·e contributeur·rice qui rejoint le projet APRÈS des dépôts encore en
+ * attente doit pouvoir les approuver ou contester : on lui ouvre un tour
+ * d'approbation sur chaque dépôt PENDING qu'elle n'a pas créé (idempotent).
+ */
+export async function openPendingApprovalsForContributor(contributorId: string): Promise<number> {
+  const contributor = await prisma.projectContributor.findUnique({
+    where: { id: contributorId },
+    include: {
+      project: {
+        include: {
+          versions: { where: { status: "PENDING" }, select: { id: true, versionNumber: true, createdById: true } },
+        },
+      },
+    },
+  });
+  if (!contributor) return 0;
+  const targets = contributor.project.versions.filter((v) => v.createdById !== contributor.userId);
+  if (targets.length === 0) return 0;
+
+  const { count } = await prisma.approval.createMany({
+    data: targets.map((v) => ({ versionId: v.id, contributorId: contributor.id, reviewerId: contributor.userId })),
+    skipDuplicates: true,
+  });
+  if (count > 0) {
+    await Promise.all(
+      targets.map((v) =>
+        createNotification({
+          userId: contributor.userId,
+          type: "APPROVAL_REQUESTED",
+          payload: {
+            projectId: contributor.projectId,
+            projectTitle: contributor.project.title,
+            versionId: v.id,
+            versionNumber: v.versionNumber,
+          },
+        }),
+      ),
+    );
+  }
+  return count;
+}

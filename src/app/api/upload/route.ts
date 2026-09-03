@@ -75,12 +75,23 @@ export async function POST(request: Request) {
   const buffer = Buffer.from(await file.arrayBuffer());
   const hash = sha256(buffer);
 
-  // Dédoublonnage : si ce hash exact existe déjà, on renvoie le fichier existant.
-  const existing = await prisma.vaultFile.findUnique({ where: { sha256Hash: hash } });
+  // Dédoublonnage : le même fichier re-déposé sur la même version est
+  // idempotent ; déposé ailleurs, il est REFUSÉ explicitement — la preuve
+  // d'antériorité appartient au premier dépôt, on ne la duplique pas en silence.
+  const existing = await prisma.vaultFile.findUnique({
+    where: { sha256Hash: hash },
+    include: { version: { include: { project: { select: { title: true } } } } },
+  });
   if (existing) {
+    if (existing.versionId === versionId) {
+      return NextResponse.json({ file: serializeFile(existing), deduplicated: true }, { status: 200 });
+    }
     return NextResponse.json(
-      { file: serializeFile(existing), deduplicated: true },
-      { status: 200 },
+      {
+        error: `Ce fichier (même empreinte SHA-256) est déjà déposé et protégé dans « ${existing.version.project.title} » (version ${existing.version.versionNumber}, « ${existing.filename} »). Un même fichier ne peut être déposé qu'une fois.`,
+        duplicateOf: { projectId: existing.version.projectId, versionId: existing.versionId, filename: existing.filename },
+      },
+      { status: 409 },
     );
   }
 

@@ -4,6 +4,8 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { buildProjectLedger } from "@/lib/ledger";
+import { getServerWalletStatus, pendingAnchorsForProject } from "@/lib/blockchain";
+import { ReplayAnchorsButton } from "./ReplayAnchorsButton";
 import { formatBytes, formatDuration, relativeTime } from "@/lib/format";
 import { avatarColor, displayName, initials } from "@/lib/avatar";
 import { aiDisclosureLabels, contributorRoleLabels } from "@/lib/validators";
@@ -70,6 +72,10 @@ export default async function ProjectDetailPage({
     (v) => v.finalPolygonTxHash || v.files.some((f) => f.polygonTxHash),
   );
   const ledger = hasOnchainTx ? await buildProjectLedger(project.id) : null;
+  // Ce qui n'est pas encore inscrit sur Polygon (RPC indisponible, wallet à
+  // sec…) : on le dit, plutôt que de laisser croire que rien n'a été ancré.
+  const pendingAnchors = await pendingAnchorsForProject(project.id);
+  const wallet = isOwner && pendingAnchors.total > 0 ? await getServerWalletStatus() : null;
 
   const roleOf = (userId: string) => project.contributors.find((c) => c.userId === userId)?.role;
   const pendingForMe = project.versions.filter(
@@ -395,6 +401,42 @@ export default async function ProjectDetailPage({
           </div>
         </aside>
       </section>
+
+      {pendingAnchors.total > 0 && (
+        <section
+          className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm"
+          aria-live="polite"
+        >
+          <div className="font-medium text-amber-800 dark:text-amber-300">
+            Ancrage blockchain en attente — {pendingAnchors.total} inscription
+            {pendingAnchors.total > 1 ? "s" : ""} pas encore sur Polygon
+          </div>
+          <p className="mt-1 text-xs text-black/60 dark:text-white/60">
+            {[
+              pendingAnchors.registerProject ? "enregistrement du projet" : null,
+              pendingAnchors.files > 0 ? `${pendingAnchors.files} fichier${pendingAnchors.files > 1 ? "s" : ""}` : null,
+              pendingAnchors.approvedVersions > 0
+                ? `${pendingAnchors.approvedVersions} approbation${pendingAnchors.approvedVersions > 1 ? "s" : ""} finale${pendingAnchors.approvedVersions > 1 ? "s" : ""}`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+            . Vos dépôts restent datés et protégés dans le vault ; l&apos;inscription publique sera rejouée
+            automatiquement dès que possible.
+          </p>
+          {isOwner && (
+            <div className="mt-2 flex flex-wrap items-center gap-3">
+              <ReplayAnchorsButton projectId={project.id} />
+              {wallet && (
+                <span className={"font-mono text-[11px] " + (wallet.low ? "text-red-600" : "text-black/50 dark:text-white/50")}>
+                  Wallet serveur {wallet.address.slice(0, 6)}…{wallet.address.slice(-4)} · {wallet.balancePol.toFixed(4)} POL
+                  {wallet.low ? " — solde insuffisant, à recharger (faucet Amoy)" : ""}
+                </span>
+              )}
+            </div>
+          )}
+        </section>
+      )}
 
       {ledger && ledger.rows.length > 0 && (
         <section className="space-y-3">

@@ -7,6 +7,7 @@ import { redirect } from "next/navigation";
 
 import { prisma } from "@/lib/prisma";
 import { auth, signIn } from "@/lib/auth";
+import { openPendingApprovalsForContributor } from "@/lib/vault";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // « Créer mon accès et approuver » — parcours du collaborateur invité (§2.4) :
@@ -63,4 +64,6 @@ async function markAccepted(contributorId: string) {
     where: { id: contributorId, acceptedAt: null },
     data: { acceptedAt: new Date() },
   });
+  // Filet de sécurité : les dépôts en attente au moment de l'arrivée.
+  await openPendingApprovalsForContributor(contributorId);
 }

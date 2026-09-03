@@ -8,14 +8,13 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { sendEmail } from "@/lib/email";
-import { registerProjectOnchain } from "@/lib/blockchain";
+import { registerProjectOnchain, replayPendingAnchors } from "@/lib/blockchain";
 import { startBulletin726SignatureRequest, startSplitsSignatureRequest } from "@/lib/esign/service";
 import {
   createNotification,
   finalizeApprovedVersion,
   rejectVersion,
-  requestApprovals,
-} from "@/lib/vault";
+  requestApprovals, openPendingApprovalsForContributor } from "@/lib/vault";
 import {
   attachOwnFicheSchema,
   createProjectSchema,
@@ -183,17 +182,22 @@ export async function inviteContributorAction(
   // Parcours du collaborateur invité (§2.4) : un LIEN, pas seulement un compte.
   // Il découvre le projet sans être connecté, puis crée son accès pour approuver.
   let inviteToken: string;
+  let contributorId: string;
   try {
     const contributor = await prisma.projectContributor.create({
       data: { projectId, userId: invitee.id, role, inviteToken: randomUUID() },
     });
     inviteToken = contributor.inviteToken!;
+    contributorId = contributor.id;
   } catch (e) {
     if (isUniqueViolation(e)) {
       return { error: "Cette personne contribue déjà au projet." };
     }
     throw e;
   }
+
+  // Les dépôts déjà en attente attendent aussi son approbation.
+  await openPendingApprovalsForContributor(contributorId);
 
   const base = (process.env.AUTH_URL ?? "http://localhost:3000").replace(/\/$/, "");
   const inviteUrl = `${base}/invite/${inviteToken}`;
@@ -529,5 +533,32 @@ export async function prepareBulletin726Action(
 
   revalidatePath(`/projects/${version.projectId}/fiche-sacem`);
   revalidatePath("/revenus");
+  return undefined;
+}
+
+/**
+ * « Relancer l'ancrage » : retente les transactions Polygon manquantes d'un
+ * projet (wallet rechargé, RPC revenu…). Propriétaire uniquement.
+ */
+export async function replayAnchorsAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const user = await requireUser();
+  const projectId = String(formData.get("projectId") ?? "");
+  const project = await prisma.project.findUnique({ where: { id: projectId }, select: { ownerId: true } });
+  if (!project) return { error: "Projet introuvable." };
+  if (project.ownerId !== user.id) return { error: "Seul le propriétaire peut relancer l'ancrage." };
+
+  const result = await replayPendingAnchors(projectId);
+  revalidatePath(`/projects/${projectId}`);
+  if (result.remaining > 0) {
+    return {
+      error:
+        result.done > 0
+          ? `${result.done} inscription(s) réussie(s), ${result.remaining} toujours en attente — solde du wallet insuffisant ?`
+          : "Aucune inscription n'a abouti — le wallet serveur manque probablement de POL.",
+    };
+  }
   return undefined;
 }

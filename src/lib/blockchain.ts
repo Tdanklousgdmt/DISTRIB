@@ -1,6 +1,6 @@
 import "server-only";
 
-import { Contract, JsonRpcProvider, Wallet, id as keccakId, concat, keccak256, toUtf8Bytes } from "ethers";
+import { Contract, JsonRpcProvider, Wallet, formatEther, id as keccakId, concat, keccak256, toUtf8Bytes } from "ethers";
 
 import { prisma } from "@/lib/prisma";
 import { optionalEnv } from "@/lib/env";
@@ -257,5 +257,105 @@ export async function syncCanPublish(projectId: string): Promise<void> {
     });
   } catch (e) {
     console.error("[blockchain] syncCanPublish échoué :", e);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Rejeu des ancrages. Aucun flux utilisateur n'échoue quand Polygon refuse une
+// transaction (non-négo #5) — mais « sera rejoué » doit être vrai : ce qui
+// manque en base (registerProject, ancrage de fichier, approveVersion) est
+// retenté ici, à la demande (bouton) ou par cron.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface PendingAnchors {
+  registerProject: boolean;
+  files: number;
+  approvedVersions: number;
+  total: number;
+}
+
+/** Ce qui n'est pas encore inscrit on-chain pour un projet. */
+export async function pendingAnchorsForProject(projectId: string): Promise<PendingAnchors> {
+  const project = await prisma.project.findUniqueOrThrow({
+    where: { id: projectId },
+    include: {
+      versions: {
+        select: { status: true, finalPolygonTxHash: true, files: { select: { polygonTxHash: true } } },
+      },
+    },
+  });
+  const files = project.versions.reduce((n, v) => n + v.files.filter((f) => !f.polygonTxHash).length, 0);
+  const approvedVersions = project.versions.filter((v) => v.status === "APPROVED" && !v.finalPolygonTxHash).length;
+  const registerProject = !project.registerTxHash;
+  return { registerProject, files, approvedVersions, total: files + approvedVersions + (registerProject ? 1 : 0) };
+}
+
+/** Retente tout ce qui manque ; renvoie ce qui a abouti. */
+export async function replayPendingAnchors(projectId: string): Promise<{ done: number; remaining: number }> {
+  if (!blockchainEnabled()) return { done: 0, remaining: 0 };
+  let done = 0;
+
+  const project = await prisma.project.findUniqueOrThrow({
+    where: { id: projectId },
+    include: {
+      versions: {
+        orderBy: { versionNumber: "asc" },
+        include: { files: { select: { id: true, sha256Hash: true, polygonTxHash: true } } },
+      },
+    },
+  });
+
+  if (!project.registerTxHash) {
+    if (await registerProjectOnchain(project.id)) done += 1;
+    else return { done, remaining: (await pendingAnchorsForProject(projectId)).total };
+  }
+
+  for (const v of project.versions) {
+    for (const f of v.files) {
+      if (f.polygonTxHash) continue;
+      const tx = await anchorFileHash(f.sha256Hash);
+      if (!tx) return { done, remaining: (await pendingAnchorsForProject(projectId)).total };
+      await prisma.vaultFile.update({ where: { id: f.id }, data: { polygonTxHash: tx } });
+      done += 1;
+    }
+    if (v.status === "APPROVED" && !v.finalPolygonTxHash) {
+      const tx = await approveVersionOnchain({
+        projectId: project.id,
+        versionNumber: v.versionNumber,
+        fileHashes: v.files.map((f) => f.sha256Hash),
+      });
+      if (!tx) return { done, remaining: (await pendingAnchorsForProject(projectId)).total };
+      await prisma.version.update({ where: { id: v.id }, data: { finalPolygonTxHash: tx } });
+      done += 1;
+    }
+  }
+  await syncCanPublish(projectId);
+  return { done, remaining: (await pendingAnchorsForProject(projectId)).total };
+}
+
+export interface ServerWalletStatus {
+  address: string;
+  balancePol: number;
+  network: "amoy" | "mainnet";
+  /** Estimation : un approveVersion coûte ~0,03 POL à 50 gwei sur Amoy. */
+  low: boolean;
+}
+
+/** Solde du wallet serveur — pour expliquer un ancrage en attente. */
+export async function getServerWalletStatus(): Promise<ServerWalletStatus | null> {
+  const chain = getChain();
+  if (!chain) return null;
+  try {
+    const balance = await chain.wallet.provider!.getBalance(chain.wallet.address);
+    const balancePol = Number(formatEther(balance));
+    return {
+      address: chain.wallet.address,
+      balancePol,
+      network: (optionalEnv("POLYGON_NETWORK") ?? "amoy") as "amoy" | "mainnet",
+      low: balancePol < 0.05,
+    };
+  } catch (e) {
+    console.error("[blockchain] solde wallet :", e);
+    return null;
   }
 }
