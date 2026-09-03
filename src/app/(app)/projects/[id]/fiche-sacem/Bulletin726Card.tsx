@@ -106,8 +106,13 @@ export function Bulletin726Card({
           )}
           {request.status === "COMPLETED" && (
             <form action={action} className="pt-1">
+              {/* Reprend les compléments mémorisés sur la demande précédente. */}
               <input type="hidden" name="versionId" value={versionId} />
               <input type="hidden" name="genre" value={defaults.genre} />
+              <input type="hidden" name="sousTitre" value={defaults.sousTitre} />
+              <input type="hidden" name="groupe" value={defaults.groupe} />
+              <input type="hidden" name="lieu" value={defaults.lieu} />
+              <input type="hidden" name="premiereExploitation" value={defaults.premiereExploitation} />
               <input type="hidden" name="suivrePhono" value="on" />
               <button type="submit" disabled={pending} className="text-xs underline disabled:opacity-50">
                 Préparer une nouvelle version du bulletin
