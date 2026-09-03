@@ -290,7 +290,7 @@ export default async function FicheSacemPage({
               charge uniquement de la faire signer et de l&apos;archiver.
             </p>
             <div className="mt-4">
-              {ownFiche ? (
+              {ownFiche && oeuvre ? (
                 <div className="rounded-lg border border-green-500/30 bg-green-500/5 p-4 text-sm">
                   <div className="font-medium text-green-800 dark:text-green-300">
                     Fiche déposée et archivée
