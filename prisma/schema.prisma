@@ -595,6 +595,8 @@ model SignatureRequest {
   signedDocumentKey    String? // PDF + page de signatures (vault), une fois complet
   signedDocumentSha256 String?
   externalId           String?                @unique // id chez le prestataire
+  // Données propres au document (ex. bulletin SACEM 726 : gabarit, compléments saisis).
+  metadata             Json?
   requestedById        String
   createdAt            DateTime               @default(now())
   completedAt          DateTime?

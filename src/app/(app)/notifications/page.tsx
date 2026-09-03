@@ -40,6 +40,10 @@ function describe(type: string, payload: unknown): string {
     case "VERSION_REJECTED":
       return title ? `Version ${vn ?? ""} de « ${title} » rejetée.` : "Votre version a été rejetée.";
     case "SPLIT_SIGNATURE_REQUESTED":
+      if (p.kind === "DECLARATION")
+        return title
+          ? `Le bulletin SACEM de « ${title} » est pré-rempli — votre signature est attendue.`
+          : "Un bulletin SACEM vous est adressé en signature.";
       return title
         ? `La répartition de « ${title} »${vn ? ` (version ${vn})` : ""} vous est adressée en signature.`
         : "Une répartition vous est adressée en signature.";

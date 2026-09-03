@@ -4,6 +4,14 @@ import { createHash } from "node:crypto";
 
 import { prisma } from "@/lib/prisma";
 import { appendSignaturePage, buildOeuvrePdf } from "@/lib/pdf";
+import {
+  fillBulletin726,
+  stampBulletin726Signatures,
+  BULLETIN_726_MAX_CREATORS,
+  type Bulletin726Creator,
+  type CreatorCategory,
+} from "@/lib/sacem/bulletin726";
+import type { Bulletin726Input } from "@/lib/validators";
 import { readVaultObject, storeVaultObject } from "@/lib/storage";
 import { createNotification } from "@/lib/vault";
 import { sendEmail } from "@/lib/email";
@@ -203,7 +211,7 @@ export async function signLocally(params: {
   });
 
   // La part correspondante est signée (checklist SACEM, page projet…).
-  if (signer.request.versionId) {
+  if (signer.request.kind === "SPLITS" && signer.request.versionId) {
     await prisma.split.updateMany({
       where: {
         versionId: signer.request.versionId,
@@ -232,7 +240,29 @@ async function sealSignedDocument(requestId: string): Promise<void> {
   const original = await readVaultObject(request.documentKey);
   const provider = getSignatureProvider();
   const completedAt = new Date();
-  const signed = await appendSignaturePage(new Uint8Array(original), {
+  const meta = (request.metadata ?? {}) as { template?: string; signerOrder?: string[] };
+
+  // Bulletin SACEM 726 : chaque marque va dans la case « Signature » de son
+  // créateur, « Fait le » est daté, le formulaire est aplati.
+  let stamped: Uint8Array = new Uint8Array(original);
+  if (request.kind === "DECLARATION" && meta.template === "sacem-726") {
+    const order = meta.signerOrder ?? request.signers.map((s) => s.userId);
+    stamped = await stampBulletin726Signatures(
+      stamped,
+      request.signers
+        .filter((s) => s.signedAt)
+        .map((s) => ({
+          index: order.indexOf(s.userId),
+          name: s.signedName ?? s.name ?? s.email,
+          signedAt: s.signedAt!,
+          signatureImage: s.signatureImage,
+        }))
+        .filter((s) => s.index >= 0),
+      completedAt,
+    );
+  }
+
+  const signed = await appendSignaturePage(stamped, {
     title: request.title,
     requestId: request.id,
     documentSha256: request.documentSha256,
@@ -258,6 +288,28 @@ async function sealSignedDocument(requestId: string): Promise<void> {
     data: { status: "COMPLETED", completedAt, signedDocumentKey: signedKey, signedDocumentSha256: hash },
   });
 
+  if (request.kind === "DECLARATION" && request.declarationId) {
+    await prisma.sacemDeclaration.update({
+      where: { id: request.declarationId },
+      data: { status: "SIGNED", pdfS3Bucket: "vault", pdfS3Key: signedKey },
+    });
+    await Promise.all(
+      request.signers.map((s) =>
+        createNotification({
+          userId: s.userId,
+          type: "SACEM_SIGNED",
+          payload: {
+            projectId: request.version?.projectId ?? null,
+            projectTitle: request.version?.project.title ?? null,
+            declarationId: request.declarationId,
+            requestId: request.id,
+          },
+        }),
+      ),
+    );
+    return;
+  }
+
   if (request.version) {
     await Promise.all(
       request.signers.map((s) =>
@@ -275,4 +327,195 @@ async function sealSignedDocument(requestId: string): Promise<void> {
       ),
     );
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Bulletin SACEM 726 — pré-rempli depuis le vault, signé par chaque créateur.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** « Prénom Nom » → { prenom, nom } ; sans nom connu, l'identifiant e-mail. */
+function splitName(name: string | null, email: string): { prenom: string; nom: string } {
+  const clean = (name ?? "").trim();
+  if (!clean) return { prenom: "", nom: email.split("@")[0] };
+  const parts = clean.split(/\s+/);
+  if (parts.length === 1) return { prenom: "", nom: parts[0] };
+  return { prenom: parts[0], nom: parts.slice(1).join(" ") };
+}
+
+/** Catégories SACEM déduites du rôle projet et du libellé de la part. */
+export function creatorCategories(role: string, roleLabel: string | null): CreatorCategory[] {
+  const label = (roleLabel ?? "").toLowerCase();
+  const cats = new Set<CreatorCategory>();
+  if (/arrang/.test(label)) cats.add("arrangeur");
+  if (/adapt/.test(label)) cats.add("adaptateur");
+  if (/parole|texte|topline|auteur|lyric/.test(label)) cats.add("auteur");
+  if (/prod|beat|compo|instru|mix|m[ée]lodie/.test(label)) cats.add("compositeur");
+  if (cats.size === 0) {
+    if (role === "CO_AUTHOR") cats.add("auteur");
+    else if (role === "BEATMAKER" || role === "CO_BEATMAKER") cats.add("compositeur");
+    else {
+      cats.add("auteur");
+      cats.add("compositeur");
+    }
+  }
+  // Ordre du bulletin : compositeur, auteur, arrangeur, adaptateur.
+  return (["compositeur", "auteur", "arrangeur", "adaptateur"] as const).filter((c) => cats.has(c));
+}
+
+export async function startBulletin726SignatureRequest(params: {
+  input: Bulletin726Input;
+  requestedById: string;
+}): Promise<{ requestId: string }> {
+  const { input } = params;
+  const version = await prisma.version.findUniqueOrThrow({
+    where: { id: input.versionId },
+    include: {
+      project: {
+        include: {
+          contributors: { include: { user: { select: { id: true, email: true, name: true, ipiCode: true } } } },
+          concerts: { orderBy: { date: "asc" }, take: 1, select: { date: true, venue: true, city: true } },
+        },
+      },
+      splits: {
+        orderBy: { createdAt: "asc" },
+        include: { contributor: { include: { user: { select: { id: true, email: true, name: true, ipiCode: true } } } } },
+      },
+      declarations: { where: { type: "OEUVRE" } },
+    },
+  });
+  if (version.status !== "APPROVED") throw new Error("Seule une version approuvée par tous peut être déclarée.");
+  if (version.splits.length === 0) throw new Error("Aucune répartition enregistrée : adressez d'abord la fiche en signature.");
+  if (version.splits.length > BULLETIN_726_MAX_CREATORS) {
+    throw new Error(`Le bulletin 726 accepte au plus ${BULLETIN_726_MAX_CREATORS} créateurs.`);
+  }
+  // Une déclaration encore en attente ou signée en interne est réutilisée ;
+  // si la précédente a déjà été transmise ou payée, le nouveau bulletin ouvre
+  // une déclaration distincte (bulletin rectificatif) — l'historique reste.
+  const existing = version.declarations.find((d) => d.status === "PENDING_SIGNATURE" || d.status === "SIGNED");
+
+  await prisma.signatureRequest.updateMany({
+    where: { versionId: version.id, kind: "DECLARATION", status: "PENDING" },
+    data: { status: "CANCELLED" },
+  });
+
+  const createurs: Bulletin726Creator[] = version.splits.map((s) => {
+    const { prenom, nom } = splitName(s.contributor.user.name, s.contributor.user.email);
+    return {
+      nom,
+      prenom,
+      ipi: s.contributor.user.ipiCode,
+      categories: creatorCategories(s.contributor.role, s.roleLabel),
+      partPhono: Number(s.percentage),
+      membreDuGroupe: Boolean(input.groupe),
+    };
+  });
+  const interpretes = version.project.contributors
+    .filter((c) => c.role === "ARTIST")
+    .map((c) => c.user.name ?? c.user.email.split("@")[0]);
+  const concert = version.project.concerts[0];
+
+  const pdfBytes = await fillBulletin726({
+    titre: version.project.title,
+    sousTitre: input.sousTitre,
+    dureeSecondes: version.durationSeconds,
+    genre: input.genre,
+    premiereExploitation: input.premiereExploitation ?? concert?.date ?? null,
+    lieu: input.lieu || (concert ? [concert.venue, concert.city].filter(Boolean).join(", ") : null),
+    interpretes,
+    groupe: input.groupe,
+    suivrePhono: input.suivrePhono,
+    createurs,
+  });
+  const hash = sha256(pdfBytes);
+  const filename = `sacem-726-v${version.versionNumber}.pdf`;
+  const documentKey = `${version.projectId}/${version.id}/signatures/${hash}-${filename}`;
+  await storeOnce(documentKey, pdfBytes, hash);
+
+  const declaration = existing
+    ? await prisma.sacemDeclaration.update({
+        where: { id: existing.id },
+        data: { status: "PENDING_SIGNATURE" },
+      })
+    : await prisma.sacemDeclaration.create({
+        data: { type: "OEUVRE", projectId: version.projectId, versionId: version.id, status: "PENDING_SIGNATURE" },
+      });
+
+  const provider = getSignatureProvider();
+  const level = requestedSignatureLevel(provider);
+  const title = `Bulletin de déclaration SACEM — ${version.project.title}`;
+  const signerOrder = version.splits.map((s) => s.contributor.user.id);
+
+  const request = await prisma.signatureRequest.create({
+    data: {
+      kind: "DECLARATION",
+      provider: provider.kind,
+      level,
+      title,
+      versionId: version.id,
+      declarationId: declaration.id,
+      documentKey,
+      documentSha256: hash,
+      requestedById: params.requestedById,
+      metadata: {
+        template: "sacem-726",
+        signerOrder,
+        complements: {
+          genre: input.genre,
+          sousTitre: input.sousTitre ?? null,
+          groupe: input.groupe ?? null,
+          lieu: input.lieu ?? null,
+          premiereExploitation: input.premiereExploitation?.toISOString() ?? null,
+          suivrePhono: input.suivrePhono,
+        },
+      },
+      signers: {
+        create: version.splits.map((s) => ({
+          userId: s.contributor.user.id,
+          email: s.contributor.user.email,
+          name: s.contributor.user.name,
+        })),
+      },
+    },
+    include: { signers: true },
+  });
+
+  const result = await provider.createRequest({
+    requestId: request.id,
+    title,
+    filename,
+    pdfBytes,
+    level,
+    signers: request.signers.map((s) => ({ id: s.id, email: s.email, name: s.name })),
+  });
+  await prisma.signatureRequest.update({ where: { id: request.id }, data: { externalId: result.externalId } });
+  await Promise.all(
+    request.signers.map(async (s) => {
+      await prisma.signatureSigner.update({
+        where: { id: s.id },
+        data: { signatureLink: result.signerLinks[s.id] ?? null },
+      });
+      await createNotification({
+        userId: s.userId,
+        type: "SPLIT_SIGNATURE_REQUESTED",
+        payload: {
+          kind: "DECLARATION",
+          title,
+          projectId: version.projectId,
+          projectTitle: version.project.title,
+          versionId: version.id,
+          signerId: s.id,
+        },
+      });
+      const link = result.signerLinks[s.id];
+      if (s.userId !== params.requestedById && link) {
+        await sendEmail({
+          to: s.email,
+          subject: `Bulletin SACEM « ${version.project.title} » : votre signature est attendue`,
+          text: `Le bulletin de déclaration SACEM de « ${version.project.title} » est pré-rempli et vous attend pour signature.\n\nSigner : ${appUrl(link)}`,
+        });
+      }
+    }),
+  );
+
+  return { requestId: request.id };
 }

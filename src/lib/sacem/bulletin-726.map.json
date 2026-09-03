@@ -1,0 +1,418 @@
+{
+ "titre": [
+  "1",
+  "2"
+ ],
+ "sousTitre": "3",
+ "dureeH": "5",
+ "dureeM": "6",
+ "dureeS": "7",
+ "genre": "8",
+ "arrangementToutes": "Check Box7A",
+ "arrangementDeterminees": "Check Box8A",
+ "arrangementPrecision": "10",
+ "premiereExploitation": [
+  "13c",
+  "14c",
+  "15c"
+ ],
+ "iswc": "z20",
+ "lieu": "12",
+ "interpretes": "12589",
+ "groupe": "9",
+ "suivrePhono": "NoussouhaitonsquelepartagedesdroitsdereprésentationoudexécutionpubliqueDEPetdesdroitsdits",
+ "faitLe": [
+  "76",
+  "77",
+  "78"
+ ],
+ "createurs": [
+  {
+   "nom": "21",
+   "prenom": "22",
+   "pseudonyme": "23",
+   "ipi": "24",
+   "coad": "25",
+   "roles": {
+    "compositeur": "Check Box7",
+    "auteur": "Check Box8",
+    "arrangeur": "Check Box9",
+    "adaptateur": "Check Box10"
+   },
+   "parts": {
+    "compositeur": [
+     "a1",
+     "a2"
+    ],
+    "auteur": [
+     "a4",
+     "a5"
+    ],
+    "arrangeur": [
+     "a6",
+     "a7"
+    ],
+    "adaptateur": [
+     "a8",
+     "a9"
+    ]
+   },
+   "groupe": {
+    "field": "Group1",
+    "oui": "Choix1",
+    "non": "Choix2"
+   },
+   "signature": {
+    "page": 2,
+    "x": 20,
+    "y": 480,
+    "w": 196,
+    "h": 62
+   }
+  },
+  {
+   "nom": "26",
+   "prenom": "27",
+   "pseudonyme": "28",
+   "ipi": "29",
+   "coad": "30",
+   "roles": {
+    "compositeur": "Check Box11",
+    "auteur": "Check Box12",
+    "arrangeur": "Check Box13",
+    "adaptateur": "Check Box14"
+   },
+   "parts": {
+    "compositeur": [
+     "a10",
+     "a11"
+    ],
+    "auteur": [
+     "a12",
+     "a13"
+    ],
+    "arrangeur": [
+     "a14",
+     "a15"
+    ],
+    "adaptateur": [
+     "a16",
+     "a17"
+    ]
+   },
+   "groupe": {
+    "field": "Group2",
+    "oui": "Choix1",
+    "non": "6"
+   },
+   "signature": {
+    "page": 2,
+    "x": 20,
+    "y": 326,
+    "w": 196,
+    "h": 62
+   }
+  },
+  {
+   "nom": "31",
+   "prenom": "32",
+   "pseudonyme": "33",
+   "ipi": "34",
+   "coad": "35",
+   "roles": {
+    "compositeur": "Check Box15",
+    "auteur": "Check Box16",
+    "arrangeur": "Check Box17",
+    "adaptateur": "Check Box18"
+   },
+   "parts": {
+    "compositeur": [
+     "a18",
+     "a19"
+    ],
+    "auteur": [
+     "a20",
+     "a21"
+    ],
+    "arrangeur": [
+     "a22",
+     "a23"
+    ],
+    "adaptateur": [
+     "a24",
+     "a25"
+    ]
+   },
+   "groupe": {
+    "field": "Group3",
+    "oui": "0",
+    "non": "1"
+   },
+   "signature": {
+    "page": 2,
+    "x": 20,
+    "y": 173,
+    "w": 196,
+    "h": 62
+   }
+  },
+  {
+   "nom": "36",
+   "prenom": "37",
+   "pseudonyme": "38",
+   "ipi": "39",
+   "coad": "40",
+   "roles": {
+    "compositeur": "Check Box19",
+    "auteur": "Check Box20",
+    "arrangeur": "Check Box21",
+    "adaptateur": "Check Box22"
+   },
+   "parts": {
+    "compositeur": [
+     "a26",
+     "a27"
+    ],
+    "auteur": [
+     "a28",
+     "a29"
+    ],
+    "arrangeur": [
+     "a30",
+     "a31"
+    ],
+    "adaptateur": [
+     "a32",
+     "a33"
+    ]
+   },
+   "groupe": {
+    "field": "Group4",
+    "oui": "Choix1",
+    "non": "2"
+   },
+   "signature": {
+    "page": 2,
+    "x": 20,
+    "y": 20,
+    "w": 196,
+    "h": 62
+   }
+  },
+  {
+   "nom": "41",
+   "prenom": "42",
+   "pseudonyme": "43",
+   "ipi": "44",
+   "coad": "45",
+   "roles": {
+    "compositeur": "Check Box23",
+    "auteur": "Check Box24",
+    "arrangeur": "Check Box25",
+    "adaptateur": "Check Box26"
+   },
+   "parts": {
+    "compositeur": [
+     "a34",
+     "a35"
+    ],
+    "auteur": [
+     "a36",
+     "a37"
+    ],
+    "arrangeur": [
+     "a38",
+     "a39"
+    ],
+    "adaptateur": [
+     "a40",
+     "a41"
+    ]
+   },
+   "groupe": {
+    "field": "Group5",
+    "oui": "Choix1",
+    "non": "0"
+   },
+   "signature": {
+    "page": 3,
+    "x": 20,
+    "y": 679,
+    "w": 196,
+    "h": 62
+   }
+  },
+  {
+   "nom": "410",
+   "prenom": "420",
+   "pseudonyme": "430",
+   "ipi": "440",
+   "coad": "450",
+   "roles": {
+    "compositeur": "Check Box230",
+    "auteur": "Check Box240",
+    "arrangeur": "Check Box250",
+    "adaptateur": "Check Box260"
+   },
+   "parts": {
+    "compositeur": [
+     "a42",
+     "a43"
+    ],
+    "auteur": [
+     "a44",
+     "a45"
+    ],
+    "arrangeur": [
+     "a46",
+     "a47"
+    ],
+    "adaptateur": [
+     "a48",
+     "a49"
+    ]
+   },
+   "groupe": {
+    "field": "Group6",
+    "oui": "Choix1",
+    "non": "0"
+   },
+   "signature": {
+    "page": 3,
+    "x": 20,
+    "y": 527,
+    "w": 196,
+    "h": 62
+   }
+  },
+  {
+   "nom": "411",
+   "prenom": "421",
+   "pseudonyme": "431",
+   "ipi": "441",
+   "coad": "451",
+   "roles": {
+    "compositeur": "Check Box231",
+    "auteur": "Check Box241",
+    "arrangeur": "Check Box251",
+    "adaptateur": "Check Box261"
+   },
+   "parts": {
+    "compositeur": [
+     "a50",
+     "a51"
+    ],
+    "auteur": [
+     "a52",
+     "a53"
+    ],
+    "arrangeur": [
+     "a54",
+     "a55"
+    ],
+    "adaptateur": [
+     "a56",
+     "a57"
+    ]
+   },
+   "groupe": {
+    "field": "Group7",
+    "oui": "Choix1",
+    "non": "0"
+   },
+   "signature": {
+    "page": 3,
+    "x": 20,
+    "y": 374,
+    "w": 196,
+    "h": 62
+   }
+  },
+  {
+   "nom": "412",
+   "prenom": "422",
+   "pseudonyme": "432",
+   "ipi": "452",
+   "coad": "442",
+   "roles": {
+    "compositeur": "Check Box232",
+    "auteur": "Check Box242",
+    "arrangeur": "Check Box252",
+    "adaptateur": "Check Box262"
+   },
+   "parts": {
+    "compositeur": [
+     "a58",
+     "a59"
+    ],
+    "auteur": [
+     "a60",
+     "a61"
+    ],
+    "arrangeur": [
+     "a62",
+     "a63"
+    ],
+    "adaptateur": [
+     "a64",
+     "a65"
+    ]
+   },
+   "groupe": {
+    "field": "Group8",
+    "oui": "Choix1",
+    "non": "0"
+   },
+   "signature": {
+    "page": 3,
+    "x": 20,
+    "y": 221,
+    "w": 196,
+    "h": 62
+   }
+  },
+  {
+   "nom": "4122",
+   "prenom": "4222",
+   "pseudonyme": "4333",
+   "ipi": "4444",
+   "coad": "4555",
+   "roles": {
+    "compositeur": "Check Box2300",
+    "auteur": "Check Box2400",
+    "arrangeur": "Check Box2500",
+    "adaptateur": "Check Box2600"
+   },
+   "parts": {
+    "compositeur": [
+     "a66",
+     "a67"
+    ],
+    "auteur": [
+     "a68",
+     "a69"
+    ],
+    "arrangeur": [
+     "a70",
+     "a71"
+    ],
+    "adaptateur": [
+     "a72",
+     "a73"
+    ]
+   },
+   "groupe": {
+    "field": "Group9",
+    "oui": "Choix1",
+    "non": "0"
+   },
+   "signature": {
+    "page": 3,
+    "x": 20,
+    "y": 68,
+    "w": 196,
+    "h": 62
+   }
+  }
+ ]
+}

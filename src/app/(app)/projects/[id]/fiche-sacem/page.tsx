@@ -10,6 +10,8 @@ import { contributorRoleLabels } from "@/lib/validators";
 import { IpiCodeForm } from "./IpiCodeForm";
 import { ProposedSplits, type ProposedRow } from "./ProposedSplits";
 import { OwnFicheUpload } from "./OwnFicheUpload";
+import { Bulletin726Card } from "./Bulletin726Card";
+import { creatorCategories } from "@/lib/esign/service";
 import { DeclareOeuvreButton } from "../DeclareOeuvreButton";
 import { DeclareAdamiButton } from "../DeclareAdamiButton";
 
@@ -43,6 +45,7 @@ export default async function FicheSacemPage({
           },
         },
       },
+      concerts: { orderBy: { date: "asc" }, take: 1, select: { date: true, venue: true, city: true } },
       versions: {
         orderBy: { versionNumber: "desc" },
         include: {
@@ -50,7 +53,6 @@ export default async function FicheSacemPage({
           signatureRequests: {
             where: { status: { in: ["PENDING", "COMPLETED"] } },
             orderBy: { createdAt: "desc" },
-            take: 1,
             include: { signers: true },
           },
           declarations: {
@@ -84,7 +86,37 @@ export default async function FicheSacemPage({
   // au dernier dépôt de la personne.
   let rows: ProposedRow[] = [];
   let alreadySent = false;
-  const sigRequest = currentVersion?.signatureRequests[0] ?? null;
+  const sigRequest = currentVersion?.signatureRequests.find((r) => r.kind === "SPLITS") ?? null;
+  const bulletinRequest = currentVersion?.signatureRequests.find((r) => r.kind === "DECLARATION") ?? null;
+  const bulletinMeta = (bulletinRequest?.metadata ?? {}) as {
+    complements?: { genre?: string; sousTitre?: string | null; groupe?: string | null; lieu?: string | null; premiereExploitation?: string | null };
+  };
+  const firstConcert = project.concerts[0] ?? null;
+  const bulletinDefaults = {
+    genre: bulletinMeta.complements?.genre ?? "",
+    sousTitre: bulletinMeta.complements?.sousTitre ?? "",
+    groupe: bulletinMeta.complements?.groupe ?? "",
+    lieu:
+      bulletinMeta.complements?.lieu ??
+      (firstConcert ? [firstConcert.venue, firstConcert.city].filter(Boolean).join(", ") : ""),
+    premiereExploitation: (bulletinMeta.complements?.premiereExploitation ?? firstConcert?.date.toISOString() ?? "").slice(0, 10),
+  };
+  const categoryLabels: Record<string, string> = {
+    compositeur: "Compositeur",
+    auteur: "Auteur",
+    arrangeur: "Arrangeur",
+    adaptateur: "Adaptateur",
+  };
+  const bulletinCreators = (currentVersion?.splits ?? [])
+    .filter((sp) => Number(sp.percentage) > 0)
+    .map((sp) => {
+      const c = project.contributors.find((pc) => pc.id === sp.contributorId);
+      return {
+        name: c ? displayName(c.user) : "—",
+        categories: creatorCategories(c?.role ?? "ARTIST", sp.roleLabel).map((k) => categoryLabels[k]).join(" · "),
+        part: Number(sp.percentage).toFixed(2),
+      };
+    });
   if (currentVersion) {
     const existing = currentVersion.splits;
     alreadySent = existing.length > 0;
@@ -279,6 +311,30 @@ export default async function FicheSacemPage({
             </div>
           </div>
         </section>
+      )}
+
+      {currentVersion && (
+        <Bulletin726Card
+          versionId={currentVersion.id}
+          currentUserId={user.id}
+          request={
+            bulletinRequest
+              ? {
+                  id: bulletinRequest.id,
+                  status: bulletinRequest.status,
+                  providerLabel: getSignatureProvider().label,
+                  signers: bulletinRequest.signers.map((sg) => ({
+                    id: sg.id,
+                    userId: sg.userId,
+                    name: displayName({ name: sg.name, email: sg.email }),
+                    status: sg.status,
+                  })),
+                }
+              : null
+          }
+          defaults={bulletinDefaults}
+          creators={bulletinCreators}
+        />
       )}
 
       {currentVersion && checklist && (

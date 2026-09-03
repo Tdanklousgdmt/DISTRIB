@@ -9,7 +9,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { sendEmail } from "@/lib/email";
 import { registerProjectOnchain } from "@/lib/blockchain";
-import { startSplitsSignatureRequest } from "@/lib/esign/service";
+import { startBulletin726SignatureRequest, startSplitsSignatureRequest } from "@/lib/esign/service";
 import {
   createNotification,
   finalizeApprovedVersion,
@@ -23,8 +23,7 @@ import {
   decideApprovalSchema,
   inviteContributorSchema,
   ipiCodeSchema,
-  setSplitsSchema,
-} from "@/lib/validators";
+  setSplitsSchema, bulletin726Schema } from "@/lib/validators";
 import { findProjectTemplate } from "@/lib/project-templates";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -489,4 +488,46 @@ function isUniqueViolation(e: unknown): boolean {
     "code" in e &&
     (e as { code?: string }).code === "P2002"
   );
+}
+
+/**
+ * Bulletin SACEM 726 : compléments saisis par l'artiste + pré-remplissage
+ * depuis le vault, puis signature par chaque créateur (plugin esign).
+ */
+export async function prepareBulletin726Action(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const user = await requireUser();
+  const parsed = bulletin726Schema.safeParse({
+    versionId: formData.get("versionId"),
+    genre: formData.get("genre"),
+    sousTitre: formData.get("sousTitre") ?? undefined,
+    groupe: formData.get("groupe") ?? undefined,
+    lieu: formData.get("lieu") ?? undefined,
+    premiereExploitation: formData.get("premiereExploitation") ?? undefined,
+    suivrePhono: formData.get("suivrePhono") === "on",
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Compléments invalides." };
+  }
+
+  const version = await prisma.version.findUnique({
+    where: { id: parsed.data.versionId },
+    include: { project: { include: { contributors: { select: { userId: true } } } } },
+  });
+  if (!version) return { error: "Version introuvable." };
+  const member =
+    version.project.ownerId === user.id || version.project.contributors.some((c) => c.userId === user.id);
+  if (!member) return { error: "Accès refusé." };
+
+  try {
+    await startBulletin726SignatureRequest({ input: parsed.data, requestedById: user.id });
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Le bulletin n'a pas pu être préparé." };
+  }
+
+  revalidatePath(`/projects/${version.projectId}/fiche-sacem`);
+  revalidatePath("/revenus");
+  return undefined;
 }

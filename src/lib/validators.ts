@@ -221,3 +221,20 @@ export function fileTypeFromName(filename: string): (typeof vaultFileTypes)[numb
       return "OTHER";
   }
 }
+
+/** Compléments du bulletin SACEM 726 (ce qui n'est pas dans le vault). */
+export const bulletin726Schema = z.object({
+  versionId: z.string().min(1),
+  genre: z.string().trim().min(1, "Le genre est obligatoire sur le bulletin").max(40),
+  sousTitre: z.string().trim().max(40).optional(),
+  groupe: z.string().trim().max(40).optional(),
+  lieu: z.string().trim().max(60).optional(),
+  premiereExploitation: z
+    .string()
+    .trim()
+    .optional()
+    .transform((v) => (v ? new Date(v) : undefined))
+    .refine((d) => d === undefined || !Number.isNaN(d.getTime()), "Date invalide"),
+  suivrePhono: z.boolean(),
+});
+export type Bulletin726Input = z.infer<typeof bulletin726Schema>;
