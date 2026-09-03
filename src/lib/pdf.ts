@@ -627,6 +627,7 @@ export async function appendSignaturePage(
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
   const regular = await doc.embedFont(StandardFonts.Helvetica);
   const mono = await doc.embedFont(StandardFonts.Courier);
+  const script = await doc.embedFont(StandardFonts.TimesRomanItalic);
 
   const page = doc.addPage(A4);
   const c: Cursor = { page, y: A4[1] - MARGIN - 10 };
@@ -669,16 +670,31 @@ export async function appendSignaturePage(
     const ua = (s.userAgent ?? "—").slice(0, 80);
     c.page.drawText(`Navigateur : ${ua}`, { x: MARGIN + 12, y: top - 69, size: 7, font: mono, color: rgb(0.35, 0.35, 0.4) });
 
+    // Marque de signature, à droite du bloc : le tracé s'il existe, sinon le
+    // nom tel que saisi, en italique — la signature reste visible dans les deux cas.
+    const sigW = 170;
+    const sigX = A4[0] - MARGIN - sigW - 12;
+    let drewImage = false;
     if (s.signatureImage?.startsWith("data:image/png;base64,")) {
       try {
         const png = await doc.embedPng(Buffer.from(s.signatureImage.slice("data:image/png;base64,".length), "base64"));
-        const w = 150;
-        const h = (png.height / png.width) * w;
-        c.page.drawImage(png, { x: A4[0] - MARGIN - w - 12, y: top - 10 - h, width: w, height: h });
+        const h = (png.height / png.width) * sigW;
+        c.page.drawImage(png, { x: sigX, y: top - 8 - h, width: sigW, height: h });
+        drewImage = true;
       } catch {
-        // tracé illisible : la piste d'audit textuelle suffit
+        // tracé illisible : on retombe sur le nom en italique
       }
     }
+    if (!drewImage) {
+      c.page.drawText(s.name, { x: sigX, y: top - 40, size: 16, font: script, color: rgb(0.12, 0.12, 0.2) });
+    }
+    c.page.drawLine({
+      start: { x: sigX, y: top - 62 },
+      end: { x: sigX + sigW, y: top - 62 },
+      thickness: 0.5,
+      color: rgb(0.6, 0.6, 0.65),
+    });
+    c.page.drawText("Signature électronique", { x: sigX, y: top - 72, size: 7, font: regular, color: rgb(0.5, 0.5, 0.55) });
     c.y = top - 106;
   }
 

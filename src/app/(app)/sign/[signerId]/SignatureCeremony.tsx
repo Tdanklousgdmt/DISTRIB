@@ -20,6 +20,9 @@ export function SignatureCeremony({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imageRef = useRef<HTMLInputElement>(null);
   const drawing = useRef(false);
+  // Ref (pas seulement un état) : la soumission peut suivre le dernier trait
+  // avant tout re-rendu, et doit quand même capturer le tracé.
+  const strokeRef = useRef(false);
   const [hasStroke, setHasStroke] = useState(false);
 
   function pos(e: React.PointerEvent<HTMLCanvasElement>) {
@@ -49,7 +52,8 @@ export function SignatureCeremony({
     const p = pos(e);
     ctx.lineTo(p.x, p.y);
     ctx.stroke();
-    setHasStroke(true);
+    strokeRef.current = true;
+    if (!hasStroke) setHasStroke(true);
   }
   function up() {
     drawing.current = false;
@@ -57,11 +61,13 @@ export function SignatureCeremony({
   function clear() {
     const c = canvasRef.current;
     c?.getContext("2d")?.clearRect(0, 0, c.width, c.height);
+    strokeRef.current = false;
     setHasStroke(false);
   }
   function onSubmit() {
     if (imageRef.current) {
-      imageRef.current.value = hasStroke && canvasRef.current ? canvasRef.current.toDataURL("image/png") : "";
+      imageRef.current.value =
+        strokeRef.current && canvasRef.current ? canvasRef.current.toDataURL("image/png") : "";
     }
   }
 
