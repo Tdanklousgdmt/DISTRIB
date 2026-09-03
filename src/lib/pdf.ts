@@ -667,7 +667,8 @@ export async function appendSignaturePage(
       { x: MARGIN + 12, y: top - 42, size: 9, font: regular },
     );
     c.page.drawText(`Adresse IP : ${s.ipAddress ?? "—"}`, { x: MARGIN + 12, y: top - 56, size: 8, font: mono, color: rgb(0.35, 0.35, 0.4) });
-    const ua = (s.userAgent ?? "—").slice(0, 80);
+    // Tronqué pour ne pas passer sous la colonne de signature (Courier 7 pt).
+    const ua = (s.userAgent ?? "—").slice(0, 56);
     c.page.drawText(`Navigateur : ${ua}`, { x: MARGIN + 12, y: top - 69, size: 7, font: mono, color: rgb(0.35, 0.35, 0.4) });
 
     // Marque de signature, à droite du bloc : le tracé s'il existe, sinon le
